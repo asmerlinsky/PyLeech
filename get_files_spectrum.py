@@ -9,11 +9,10 @@ import inspect
 import os
 import sys
 
-if True: #run when starting ipython instance
+if True:  # run when starting ipython instance
     sys.path.append(os.getcwd())
-    sys.path.append(os.getcwd()+'\\PyLeech')
-        
-    
+    sys.path.append(os.getcwd() + '\\PyLeech')
+
 file_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 wdir = os.path.dirname(file_dir)
 os.chdir(wdir)
@@ -21,7 +20,7 @@ import AbfExtension as AbfE
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from filterUtils import *
-#mpl.rcParams['agg.path.chunksize'] = 10000
+# mpl.rcParams['agg.path.chunksize'] = 10000
 import numpy as np
 import scipy.signal as spsig
 import spikeUtils as sU
@@ -29,69 +28,80 @@ from shutil import copyfile
 import importlib
 import glob
 
-
-
 dirname = 'T_ipsp'
 
-file_list = glob.glob(dirname + '/*4.1.abf')
-
+file_list = glob.glob(dirname + '/T5.*.abf')
 
 for abf_file in file_list:
-    
-        
-        
-        
+
     try:
-        del(block)
+        del (block)
     except:
-        pass    
+        pass
     copyfile(abf_file, "temp.abf")
-    
+
     block = AbfE.ExtendedAxonRawIo("temp.abf")
-    
+
     ch_data = block.rescale_signal_raw_to_float(block.get_analogsignal_chunk(0, 0))
-    time = AbfE.generateTimeVector(len(ch_data[:, block.ch_info[list(block.ch_info)[0]]['index']]), block.get_signal_sampling_rate())
-    
+    time = AbfE.generateTimeVector(len(ch_data[:, block.ch_info[list(block.ch_info)[0]]['index']]),
+                                   block.get_signal_sampling_rate())
 
-
-
-    
     for key, ch_params in block.ch_info.items():
         if 'Vm1' in key:
             signal = ch_data[:, block.ch_info[key]['index']]
-            
+
             time = time[0:len(signal)]
             spec = list(spsig.welch(signal, fs=int(ch_params['sampling_rate']), nperseg=10000))
-            spec[1] = 20*(np.log10(spec[1])-np.log10(spec[1][0]))
-            
-            
+            spec[1] = 20 * (np.log10(spec[1]) - np.log10(spec[1][0]))
+
             plt.figure()
-            plt.title(abf_file.split('\\')[1].split('.')[0] + ', ' + key)
+            plt.title(abf_file.split('\\')[1] + ', ' + key)
             plt.plot(spec[0], spec[1], label='unfiltered')
             plt.grid()
-            
-            
-            poli_b, poli_a = spsig.butter(8, 100*2/(ch_params['sampling_rate']*np.pi))
+
+            poli_b, poli_a = spsig.butter(4, .5 * 2 / (ch_params['sampling_rate'] * np.pi), btype='high')
+            hpfiltered = spsig.filtfilt(poli_b, poli_a, signal)
+            hp_spec = list(spsig.welch(hpfiltered, fs=int(ch_params['sampling_rate']), nperseg=10000))
+            hp_spec[1] = 20 * (np.log10(hp_spec[1]) - np.log10(hp_spec[1][0]))
+            plt.plot(hp_spec[0], hp_spec[1], label='highpass filter')
+
+            poli_b, poli_a = spsig.butter(8, 100 * 2 / (ch_params['sampling_rate'] * np.pi))
             lpfiltered = spsig.filtfilt(poli_b, poli_a, signal)
-            #lpfiltered = runFilter(lpfiltered, [50], int(ch_params['sampling_rate']), 0.01)
+
+            hplpfiltered = spsig.filtfilt(poli_b, poli_a, hpfiltered)
+            # lpfiltered = runFilter(lpfiltered, [50], int(ch_params['sampling_rate']), 0.01)
             lpfilt_spec = list(spsig.welch(lpfiltered, fs=int(ch_params['sampling_rate']), nperseg=10000))
-            lpfilt_spec[1] = 20*(np.log10(lpfilt_spec[1])-np.log10(lpfilt_spec[1][0]))
+            lpfilt_spec[1] = 20 * (np.log10(lpfilt_spec[1]) - np.log10(lpfilt_spec[1][0]))
             plt.plot(lpfilt_spec[0], lpfilt_spec[1], label='low pass filtered')
-            
-            
-            poli_b, poli_a = spsig.butter(2, 1/(ch_params['sampling_rate']*np.pi))
+
+            poli_b, poli_a = spsig.butter(2, 1 / (ch_params['sampling_rate'] * np.pi))
             filtered = spsig.filtfilt(poli_b, poli_a, signal)
             filt_spec = list(spsig.welch(filtered, fs=int(ch_params['sampling_rate']), nperseg=10000))
-            filt_spec[1] = 20*(np.log10(filt_spec[1])-np.log10(filt_spec[1][0]))
-            
+            filt_spec[1] = 20 * (np.log10(filt_spec[1]) - np.log10(filt_spec[1][0]))
+
             plt.plot(filt_spec[0], filt_spec[1], label='baseline only')
             plt.legend()
-            #plt.close()
-            
-            
+            # plt.close()
+
+            fig = plt.figure(figsize=(16, 10))
+            fig.suptitle(abf_file.split('\\')[1] + ', ' + key)
+
+            ax1 = fig.add_subplot(3, 1, 1)
+            ax2 = fig.add_subplot(3, 1, 2, sharex=ax1)
+            ax3 = fig.add_subplot(3, 1, 3, sharex=ax1, sharey=ax2)
+
+            ax1.plot(signal)
+            ax1.grid()
+
+            ax2.plot(hpfiltered)
+            ax2.grid()
+
+            ax3.plot(hplpfiltered)
+            ax3.grid()
+            '''
             
             fig = plt.figure(figsize=(16,10))
-            fig.suptitle(abf_file.split('\\')[1].split('.')[0] + ', ' + key)
+            fig.suptitle(abf_file.split('\\')[1] + ', ' + key)
             ax1 = fig.add_subplot(3, 1, 1)
             ax2 = fig.add_subplot(3, 1, 2, sharex=ax1, sharey=ax1)
             ax3 = fig.add_subplot(3, 1, 3, sharex=ax1, sharey=ax1)
@@ -107,7 +117,7 @@ for abf_file in file_list:
             
             
             fig = plt.figure(figsize=(16,10))     
-            fig.suptitle(abf_file.split('\\')[1].split('.')[0] + ', ' + key)
+            fig.suptitle(abf_file.split('\\')[1] + ', ' + key)
             
             ax1 = fig.add_subplot(3, 1, 1)
             ax2 = fig.add_subplot(3, 1, 2, sharex=ax1)
@@ -132,3 +142,7 @@ for abf_file in file_list:
             dfiltered = np.gradient(filtered)
             ax3.plot(dfiltered)
             ax3.grid()
+            
+            print(abf_file.split('\\')[1], np.mean(dfiltered))
+            
+            '''
