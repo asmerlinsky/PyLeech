@@ -103,8 +103,8 @@ class SpSorter:
         :rtype: list
         """
         peak_detection_data = np.apply_along_axis(lambda x:
-                                    fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
-                                    1, np.array(self.traces))
+                                                  fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
+                                                  1, np.array(self.traces))
         peak_detection_data = (peak_detection_data.transpose() / \
                                np.apply_along_axis(swp.mad, 1, peak_detection_data)).transpose()
         peak_detection_data[peak_detection_data < threshold] = 0
@@ -121,8 +121,8 @@ class SpSorter:
             interval = [int(interval[0] * len(self.time)), int(interval[1] * len(self.time))]
 
         data_filtered = np.apply_along_axis(lambda x:
-                              fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
-                              1, self.traces)
+                                            fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
+                                            1, self.traces)
         data_filtered = (data_filtered.transpose() / \
                          np.apply_along_axis(swp.mad, 1, data_filtered)).transpose()
 
@@ -406,13 +406,15 @@ class SpSorter:
 
     def makeCenterDict(self, before=49, after=50):
         self.centers = {}
+        dataD, dataDD = swp.mk_data_derivatives(self.traces)
         for i in np.unique(self.train_clusters):
             if (i < 0) or (i == nan) or (i == opp0):
                 continue
 
             self.centers.update({i:
                                      swp.mk_center_dictionary(self.peaks_idxs[self.good_evts][self.train_clusters == i],
-                                                              self.traces, before=before, after=after)
+                                                              self.traces, before=before, after=after, dataD=dataD,
+                                                              dataDD=dataDD)
                                  }
                                 )
         beep()
@@ -450,8 +452,9 @@ class SpSorter:
             channels = [channels]
         for i in channels:
             peak_detection_data = np.apply_along_axis(lambda x:
-                                        fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
-                                        1, np.array(self.peel[-1]))
+                                                      fftconvolve(x, np.array([1] * vect_len) / float(vect_len),
+                                                                  'same'),
+                                                      1, np.array(self.peel[-1]))
 
             peak_detection_data = (peak_detection_data.transpose() / \
                                    np.apply_along_axis(swp.mad, 1, peak_detection_data)).transpose()
@@ -540,7 +543,7 @@ class SpSorter:
         if good_clusters:
             clust_list = self.train_clusters[
                 (np.unique(self.train_clusters) > 0) & (np.unique(self.train_clusters) != nan), (
-                            np.unique(self.train_clusters) != opp0)]
+                        np.unique(self.train_clusters) != opp0)]
         # idxs = list(range(clust_dim))
         if clust_list is not None and len(clust_list) > 0:
             ggobi_clusters = True
@@ -653,8 +656,10 @@ class SpSorter:
         if legend:
             plt.legend(loc='upper right')
 
-    def plotTemplates(self, clust_list=None, hide=False):
-        plt.figure()
+    def plotTemplates(self, clust_list=None, new_figure=True):
+        if new_figure:
+            fig = plt.figure()
+
         self.generateClustersTemplate()
         if clust_list is None:
             try:
@@ -662,6 +667,8 @@ class SpSorter:
             except:
                 clust_list = list(self.template_dict.keys())
             self.setGoodColors()
+        elif type(clust_list) is int:
+            clust_list = [clust_list]
 
         colors = self.cluster_color
 
@@ -673,7 +680,9 @@ class SpSorter:
             plt.axvline(x=i, color='black', lw=1)
         plt.legend()
 
-    def plotCompleteDetection(self, rounds='All', interval=None, legend=False, lw=1, clust_list=None):
+        return fig
+
+    def plotCompleteDetection(self, rounds='All', step=1, interval=None, legend=False, lw=1, clust_list=None):
         self.setRoundColors()
         if interval is None:
             interval = [0, len(self.time)]
@@ -700,9 +709,10 @@ class SpSorter:
         else:
             colors = setGoodColors(clust_list)
 
-        swp.plot_data_list(self.traces[interval[0]:interval[1]], self.time[interval[0]:interval[1]],
+        swp.plot_data_list(self.traces[:, interval[0]:interval[1]:step], self.time[interval[0]:interval[1]:step],
                            linewidth=lw)
-
+        line_map = {}
+        i = 0
         for key, spike_ind in spike_dict.items():
             if (clust_list is None) or (key in clust_list):
                 try:
@@ -720,11 +730,23 @@ class SpSorter:
                                    channels=channels,
                                    peak_color=colors[key],
                                    label=label)
-
+                line_map[key] = i
+                i += 1
         if legend:
             plt.legend(loc='upper right')
 
-        return ax
+        return ax, line_map
+
+    def hideClusterFromAx(self, ax, line_map, cluster):
+        if type(cluster) is int:
+            ax.lines[line_map[cluster]].remove()
+        elif type(cluster) is list:
+            for cl in cluster:
+                ax.lines[line_map[cl]].remove()
+        else:
+            assert False, "cluster must be either int or list of ints"
+
+        ax.legend()
 
     def plotTraceAndStd(self, channel=0, legend=False, interval=None):
         """ To be used after mad normalization
@@ -889,8 +911,8 @@ def good_evts_fct(samp, thr=3):
     for i in range(samp.shape[0]): samp_r[i, above] = 0
     samp_med[above] = 0
     res = np.apply_along_axis(lambda x:
-                np.all(abs((x - samp_med) / samp_mad) < thr),
-                1, samp_r)
+                              np.all(abs((x - samp_med) / samp_mad) < thr),
+                              1, samp_r)
     return res
 
 

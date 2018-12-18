@@ -94,9 +94,11 @@ class KMeansSorter(spsortUtils.SpSorter):
         self.train_mask[train_idxs] = 1
 
         self.prediction_clusters = self.train_clusters[train_sub_idxs]
+        self.cluster_map = {}
         j = 0
         for i in np.sort(np.unique(self.prediction_clusters)):
             self.prediction_clusters[self.prediction_clusters == i] = j
+            self.cluster_map[i] = j
             j += 1
 
 
