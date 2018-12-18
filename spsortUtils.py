@@ -1,5 +1,4 @@
 import numpy as np
-from numpy import apply_along_axis as apply
 import matplotlib.pyplot as plt
 from scipy.signal import fftconvolve
 from PyLeech import sorting_with_python as swp
@@ -15,8 +14,6 @@ import winsound
 import PyLeech.constants as constants
 import matplotlib.colors
 import math
-import json
-import PyLeech.json_numpy as json_numpy
 import os
 import _pickle as pickle
 import time
@@ -41,14 +38,19 @@ class SpSorter:
     fs: float
         sampling frequency
 
-    single_side: bool
-        set to perform analysis using one side of the trace
     ------
 
     Notes
     ------
 
     """
+
+    attrs_list = ['filename', 'time', 'traces', 'sample_freq', 'state', 'peaks_idxs', 'evts', 'evt_interval',
+                  'ch_no', 'evt_length', 'evts_median',
+                  'evts_mad', 'evts_max', 'good_evts', 'unitary', 'original_clusters', 'km', 'train_clusters',
+                  'cluster_color',
+                  'good_colors',
+                  'template_dict', 'rounds', 'final_spike_dict']
 
     def __init__(self, filename, data=None, time_vect=None, fs=None, verbose=False):
 
@@ -100,11 +102,11 @@ class SpSorter:
         :return: peaks indexes
         :rtype: list
         """
-        peak_detection_data = apply(lambda x:
+        peak_detection_data = np.apply_along_axis(lambda x:
                                     fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
                                     1, np.array(self.traces))
         peak_detection_data = (peak_detection_data.transpose() / \
-                               apply(swp.mad, 1, peak_detection_data)).transpose()
+                               np.apply_along_axis(swp.mad, 1, peak_detection_data)).transpose()
         peak_detection_data[peak_detection_data < threshold] = 0
 
         self.peaks_idxs = swp.peak(peak_detection_data.sum(0), minimal_dist=min_dist)
@@ -118,11 +120,11 @@ class SpSorter:
         else:
             interval = [int(interval[0] * len(self.time)), int(interval[1] * len(self.time))]
 
-        data_filtered = apply(lambda x:
+        data_filtered = np.apply_along_axis(lambda x:
                               fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
                               1, self.traces)
         data_filtered = (data_filtered.transpose() / \
-                         apply(swp.mad, 1, data_filtered)).transpose()
+                         np.apply_along_axis(swp.mad, 1, data_filtered)).transpose()
 
         data_filtered[data_filtered < threshold] = 0
 
@@ -138,8 +140,8 @@ class SpSorter:
         self.evt_interval = [before, after]
         self.evt_length = before + after + 1
         self.evts = swp.mk_events(self.peaks_idxs, self.traces, before, after)
-        self.evts_median = apply(np.median, 0, self.evts)
-        self.evts_mad = apply(swp.mad, 0, self.evts)
+        self.evts_median = np.apply_along_axis(np.median, 0, self.evts)
+        self.evts_mad = np.apply_along_axis(swp.mad, 0, self.evts)
         self.evts_max = self.evts[:, before + 1]
 
         return self.evts
@@ -149,6 +151,7 @@ class SpSorter:
                                        safety_factor=safety_factor, size=size)
 
     def getGoodEvents(self, threshold=3):
+        self.good_evt_thres = threshold
         self.good_evts = good_evts_fct(self.evts, threshold)
         print("Found %i out of %i events" % (len(self.evts[self.good_evts]), len(self.evts)))
 
@@ -163,7 +166,7 @@ class SpSorter:
                             n_jobs=None, save=False):
         if n_jobs is None:
             n_jobs = (proc_num - 2)
-        self.km_dim_size = dim_size
+
         self.km = KMeans(n_clusters=clust_no, init='k-means++', verbose=verbose, n_init=n_init, max_iter=max_iter,
                          precompute_distances=True,
                          copy_x=True, n_jobs=n_jobs)
@@ -188,6 +191,7 @@ class SpSorter:
                 print('Setting dimension size to 10')
                 dim_size = 10
             cluster = self.km.fit_predict(np.dot(evts[self.good_evts, :], self.unitary[:, 0:dim_size]))
+        self.km_dim_size = dim_size
         end = time.time()
         l = []
         for i in range(clust_no):
@@ -217,45 +221,6 @@ class SpSorter:
 
     def getKMeansFullPrediction(self):
         self.full_cluster = self.km.predict(np.dot(self.evts, self.unitary[:, 0:self.km_dim_size]))
-
-    def generateTrainData(self):
-        good_clusters = getGoodClusters(np.unique(self.train_clusters))
-        good_evts_idxs = np.where(self.good_evts)[0]
-
-        train_sub_idxs = np.where(np.in1d(self.train_clusters, good_clusters))[0]
-
-        train_idxs = good_evts_idxs[train_sub_idxs]
-        self.train_mask = np.zeros(len(self.evts), dtype=bool)
-        self.train_mask[train_sub_idxs] = 1
-
-        self.train_evts = self.evts[self.train_mask,:]
-        self.prediction_clusters = self.train_clusters[train_sub_idxs]
-        j=0
-        for i in np.sort(np.unique(self.prediction_clusters)):
-            self.prediction_clusters[self.prediction_clusters == i] = j
-            j+=1
-
-    def KMeansPostClusteringPredict(self, n_init=1000, max_iter=400, verbose=0,
-        n_jobs=None, save=False):
-        if n_jobs is None:
-            n_jobs = multiprocessing.cpu_count()-1
-        start = time.time()
-        self.km = KMeans(n_clusters=len(np.unique(self.prediction_clusters)), init='k-means++', verbose=verbose, n_init=n_init, max_iter=max_iter,
-                         precompute_distances=True,
-                         copy_x=True, n_jobs=n_jobs)
-
-        self.km.fit(np.dot(self.train_evts, self.unitary[:, 0:self.km_dim_size]), self.prediction_clusters)
-        fitted = time.time()
-        self.prediction = self.km.predict(np.dot(self.evts, self.unitary[:, 0:self.km_dim_size]))
-        self.state = 'Prediction by KMeans'
-        end = time.time()
-        print(
-            'Fitting took %i seconds and predicting took %i seconds with these settings:\ndim_size = %i,\nevt number = %i,\nn_init = %i,\nmax_iter = %i, ' % (
-                int(fitted-start), int(end-fitted), self.km_dim_size, sum(self.good_evts), n_init, max_iter))
-
-        beep()
-        if save:
-            self.saveResults()
 
     def subdivideClusters(self, cluster, clust_no, dim_size=0, n_init=1000, max_iter=400):
         km = KMeans(n_clusters=clust_no, init='k-means++', n_init=n_init, max_iter=max_iter, precompute_distances=True,
@@ -320,32 +285,23 @@ class SpSorter:
                     except:
                         pass
 
-    def mergeClusters(self, c_obj, c_merge, clust_type='train'):
-        if clust_type.lower == 'train'
-            if type(c_merge) is list:
-                for cl in c_merge:
-                    self.train_clusters[self.train_clusters == cl] = c_obj
-            elif type(c_merge) is int:
-                self.train_clusters[self.train_clusters == c_merge] = c_obj
-            else:
-                raise TypeError("clusters to merge should be an int if single or list of ints")
+    def mergeClusters(self, c_obj, c_merge):
+        if type(c_merge) is list:
+            for cl in c_merge:
+                self.train_clusters[self.train_clusters == cl] = c_obj
+        elif type(c_merge) is int:
+            self.train_clusters[self.train_clusters == c_merge] = c_obj
+        else:
+            raise TypeError("clusters to merge should be an int if single or list of ints")
 
-        elif clust_type.lower() == 'test':
-            if type(c_merge) is list:
-                for cl in c_merge:
-                    self.prediction[self.prediction == cl] = c_obj
-            elif type(c_merge) is int:
-                self.prediction[self.prediction == c_merge] = c_obj
-            else:
-                raise TypeError("clusters to merge should be an int if single or list of ints")
         self.generateClustersTemplate()
 
     def generateClustersTemplate(self):
         self.template_dict = {}
         for cl in np.unique(self.train_clusters):
             if cl >= 0 and (cl != nan) and (cl != opp0):
-                median = apply(np.median, 0, self.evts[self.good_evts, :][self.train_clusters == cl, :])
-                mad = apply(swp.mad, 0, self.evts[self.good_evts, :][self.train_clusters == cl, :])
+                median = np.apply_along_axis(np.median, 0, self.evts[self.good_evts, :][self.train_clusters == cl, :])
+                mad = np.apply_along_axis(swp.mad, 0, self.evts[self.good_evts, :][self.train_clusters == cl, :])
                 self.template_dict.update({cl: {'median': median, 'mad': mad}})
 
     def hideBadEvents(self, clust_list=None, pct=0.1):
@@ -481,24 +437,24 @@ class SpSorter:
 
         return swp.predict_data(round0, self.centers, nb_channels=self.ch_no, data_length=len(self.traces[0, :]))
 
-    def secondaryPeeling(self, channels=None, vect_len=5, threshold=5, min_dist=50, store_mid_steps=True, skip_units=None):
+    def secondaryPeeling(self, channels=None, vect_len=5, threshold=5, min_dist=50, store_mid_steps=True,
+                         skip_units=None):
         centers = deepcopy(self.centers)
         if skip_units is not None:
             for unit in skip_units:
                 del centers[unit]
-
 
         if channels is None:
             channels = range(self.ch_no)
         elif type(channels) is int:
             channels = [channels]
         for i in channels:
-            peak_detection_data = apply(lambda x:
+            peak_detection_data = np.apply_along_axis(lambda x:
                                         fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
                                         1, np.array(self.peel[-1]))
 
             peak_detection_data = (peak_detection_data.transpose() / \
-                                   apply(swp.mad, 1, peak_detection_data)).transpose()
+                                   np.apply_along_axis(swp.mad, 1, peak_detection_data)).transpose()
 
             peak_detection_data[peak_detection_data < threshold] = 0
             if not store_mid_steps:
@@ -552,18 +508,16 @@ class SpSorter:
             filename = generatePklFilename(filename)
 
         results = {}
-        attrs_list = ['filename', 'time', 'traces', 'sample_freq', 'state', 'peaks_idxs', 'evts', 'evt_interval',
-                      'ch_no', 'evt_length', 'evts_median',
-                      'evts_mad', 'evts_max', 'good_evts', 'unitary', 'original_clusters', 'km', 'train_clusters', 'cluster_color', 'prediction'
-                                                                                                       'good_colors',
-                      'template_dict', 'rounds', 'final_spike_dict']
 
-        for attr in attrs_list:
+        for attr in SpSorter.attrs_list:
             try:
                 results[attr] = getattr(self, attr)
             except AttributeError:
                 if attr == 'train_clusters':
+                    print(" 'train_clusters' attribute wasn't there, saving 'clusters' as 'train_clusters")
                     results[attr] = self.clusters
+                else:
+                    print('%s wasn´t defined, it won´t be saved' % attr)
                 pass
         print('Saving in %s.pkl' % filename)
         with open(filename + '.pkl', 'wb') as pfile:
@@ -574,7 +528,9 @@ class SpSorter:
         filename = os.path.splitext(filename)[0]
         with open(filename + '.pkl', 'rb') as pfile:
             results = pickle.load(pfile)
+        print('Loaded:')
         for key, item in results.items():
+            print(key)
             setattr(self, key, item)
 
     ####################################################################### Plot methods ##############################
@@ -583,7 +539,8 @@ class SpSorter:
                         good_clusters=False):
         if good_clusters:
             clust_list = self.train_clusters[
-                (np.unique(self.train_clusters) > 0) & (np.unique(self.train_clusters) != nan), (np.unique(self.train_clusters) != opp0)]
+                (np.unique(self.train_clusters) > 0) & (np.unique(self.train_clusters) != nan), (
+                            np.unique(self.train_clusters) != opp0)]
         # idxs = list(range(clust_dim))
         if clust_list is not None and len(clust_list) > 0:
             ggobi_clusters = True
@@ -626,7 +583,7 @@ class SpSorter:
             plt.figure()
             plt.title('cluster %s' % str(clusts))
             if add_unclustedred_evts:
-                swp.plot_events(self.evts[self.full_cluster== clusts, :], n_channels=self.ch_no)
+                swp.plot_events(self.evts[self.full_cluster == clusts, :], n_channels=self.ch_no)
             else:
                 swp.plot_events(self.evts[self.good_evts, :][self.train_clusters == clusts, :], n_channels=self.ch_no)
 
@@ -658,32 +615,25 @@ class SpSorter:
                     if add_unclustedred_evts:
                         swp.plot_events(self.evts[self.full_cluster == i, :], n_channels=self.ch_no)
                     else:
-                        swp.plot_events(self.evts[self.good_evts, :][self.train_clusters == i, :], n_channels=self.ch_no)
+                        swp.plot_events(self.evts[self.good_evts, :][self.train_clusters == i, :],
+                                        n_channels=self.ch_no)
 
                     for i in np.arange(self.evt_interval[0], self.evt_length * self.ch_no, self.evt_length):
                         plt.axvline(x=i, color='black', lw=1)
                     if y_lim is not None:
                         plt.ylim(y_lim)
 
-    def plotClusteredEvents(self, clust_list=None, legend=True, data_type='train', lw=1):
+    def plotClusteredEvents(self, clust_list=None, legend=True, lw=1):
 
         if clust_list is None:
             clust_list = []
 
-        if data_type.lower == 'train':
-            colors = setGoodColors(np.unique(self.train_clusters))
-            iter_clusts = np.unique(self.train_clusters)
-        elif data_type.lower() == 'test':
-            colors = setGoodColors(np.unique(self.prediction_clusters))
-            iter_clusts = np.unique(self.prediction_clusters)
-        else:
-            assert False, "data_type must be either \'test\' or \'train\'"
-
+        colors = setGoodColors(np.unique(self.train_clusters))
+        iter_clusts = np.unique(self.train_clusters)
 
         plt.figure()
         swp.plot_data_list(self.traces, self.time,
                            linewidth=lw)
-
 
         for i in iter_clusts:
             if (((i < 0) or (i == nan) or (i == opp0))):
@@ -693,18 +643,12 @@ class SpSorter:
                     channels = self.template_dict[i]['channels']
                 except KeyError or AttributeError:
                     channels = None
-                if data_type.lower() == 'train':
-                    swp.plot_detection(self.traces, self.time,
-                                       self.peaks_idxs[self.good_evts][self.train_clusters == i],
-                                       channels=channels,
-                                       peak_color=colors[i],
-                                       label=str(i))
-                elif data_type.lower() == 'test':
-                    swp.plot_detection(self.traces, self.time,
-                                       self.peaks_idxs[self.prediction == i],
-                                       channels=channels,
-                                       peak_color=colors[i],
-                                       label=str(i))
+
+                swp.plot_detection(self.traces, self.time,
+                                   self.peaks_idxs[self.good_evts][self.train_clusters == i],
+                                   channels=channels,
+                                   peak_color=colors[i],
+                                   label=str(i))
 
         if legend:
             plt.legend(loc='upper right')
@@ -938,13 +882,13 @@ def categorical_cmap(nc, nsc, cmap="tab10", continuous=False):
 
 
 def good_evts_fct(samp, thr=3):
-    samp_med = apply(np.median, 0, samp)
-    samp_mad = apply(swp.mad, 0, samp)
+    samp_med = np.apply_along_axis(np.median, 0, samp)
+    samp_mad = np.apply_along_axis(swp.mad, 0, samp)
     above = samp_med > 0
     samp_r = samp.copy()
     for i in range(samp.shape[0]): samp_r[i, above] = 0
     samp_med[above] = 0
-    res = apply(lambda x:
+    res = np.apply_along_axis(lambda x:
                 np.all(abs((x - samp_med) / samp_mad) < thr),
                 1, samp_r)
     return res
@@ -967,8 +911,10 @@ def setColors(clust_no, num_col=10):
     cluster_color.update({nan: [cmap(j)]})
     return cluster_color
 
+
 def getGoodClusters(unique_clust_list):
     return unique_clust_list[(unique_clust_list >= 0) & (unique_clust_list != opp0) & (unique_clust_list != nan)]
+
 
 def setGoodColors(good_clusters, num_col=10):
     cmap = categorical_cmap(num_col, math.ceil(len(good_clusters) / num_col))
