@@ -46,11 +46,9 @@ class SpSorter:
     """
 
     attrs_list = ['filename', 'time', 'traces', 'sample_freq', 'state', 'peaks_idxs', 'evts', 'evt_interval',
-                  'ch_no', 'evt_length', 'evts_median',
-                  'evts_mad', 'evts_max', 'good_evts', 'unitary', 'original_clusters', 'km', 'train_clusters',
-                  'cluster_color',
-                  'good_colors',
-                  'template_dict', 'rounds', 'final_spike_dict']
+                  'ch_no', 'evt_length', 'evts_median', 'evts_mad', 'evts_max', 'original_good_evts',
+                  'good_evts', 'good_evts_idxs', 'unitary', 'original_clusters', 'km', 'train_clusters', 'cluster_color',
+                  'good_colors', 'template_dict', 'rounds', 'final_spike_dict']
 
     def __init__(self, filename, data=None, time_vect=None, fs=None, verbose=False):
 
@@ -159,8 +157,14 @@ class SpSorter:
         idxs = np.where(self.good_evts)[0]
         np.random.shuffle(idxs)
         idxs = idxs[int(pct * len(idxs)):]
-        print('Kept %i spikes' % int(pct * len(idxs)))
+
         self.good_evts[idxs] = False
+        print("Kept %i spikes" % sum(self.good_evts))
+        self.shuffle_good_idxs = np.where(self.good_evts)[0]
+        self.original_good_evts = deepcopy(self.good_evts)
+
+    def getUniqueClusters(self):
+        return np.unique(self.train_clusters)
 
     def KMeansClusterEvents(self, clust_no, use_pca=False, dim_size=0, n_init=1000, max_iter=400, verbose=0,
                             n_jobs=None, save=False):
@@ -285,6 +289,23 @@ class SpSorter:
                     except:
                         pass
 
+    def renumberClusters(self):
+        good_clusters = getGoodClusters(np.unique(self.train_clusters))
+
+        good_clusters_idx = np.where(np.in1d(self.train_clusters, good_clusters))[0]
+
+        self.train_clusters = self.train_clusters[good_clusters_idx]
+
+        good_evts_idxs = np.where(self.good_evts)[0]
+
+        self.good_evts = np.zeros(len(self.good_evts), dtype=bool)
+        self.good_evts[good_evts_idxs[good_clusters_idx]] = True
+
+        j = 0
+        for i in np.sort(good_clusters):
+            self.train_clusters[self.train_clusters == i] = j
+            j += 1
+
     def mergeClusters(self, c_obj, c_merge):
         if type(c_merge) is list:
             for cl in c_merge:
@@ -330,13 +351,19 @@ class SpSorter:
 
     def restoreClusters(self, clust_list=None):
         if clust_list is None:
-            self.train_clusters = self.original_clusters
+            self.train_clusters = deepcopy(self.original_clusters)
+            self.good_evts = deepcopy(self.original_good_evts)
         else:
             for i in clust_list:
                 if i < 0:
                     self.train_clusters[self.train_clusters == i] = -i
                 elif i == opp0:
                     self.train_clusters[self.train_clusters == i] = 0
+
+    def restorePostClusteringState(self):
+
+        self.train_clusters = deepcopy(self.original_clusters)
+        self.good_evts = deepcopy(self.original_good_evts)
 
     def getPcaBase(self, plot_vectors=False, vect_num=8):
 
@@ -661,16 +688,21 @@ class SpSorter:
             fig = plt.figure()
 
         self.generateClustersTemplate()
+
         if clust_list is None:
             try:
                 clust_list = list(self.template_dict.keys())
             except:
                 clust_list = list(self.template_dict.keys())
             self.setGoodColors()
+            colors = self.cluster_color
         elif type(clust_list) is int:
             clust_list = [clust_list]
-
-        colors = self.cluster_color
+            colors = setGoodColors(clust_list)
+        elif (type(clust_list) is list) or (type(clust_list) is np.ndarray):
+            colors = setGoodColors(clust_list)
+        else:
+            assert False, "clust_list must be either a list or an int"
 
         for key, item in self.template_dict.items():
             if key in clust_list:
