@@ -1,12 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import PyLeech.spikeUtils as spikeUtils
 import PyLeech.spsortUtils as spsortUtils
 import os.path
 from copy import deepcopy
 from PyLeech.constants import *
 import _pickle as pickle
-
+import math
 
 def getInstFreq(time, spike_dict, fs):
     spike_freq_dict = {}
@@ -27,9 +28,25 @@ def binSpikes(spike_freq_dict, time_length, step):
 
 
 def plotCompleteDetection(traces, time, spike_dict, template_dict, cluster_colors, legend=True, lw=1, clust_list=None,
-                          hide_clust_list=None):
-    fig, ax_list = plot_data_list(traces, time,
-                                  linewidth=lw)
+                          hide_clust_list=None, interval=None, step=1, intracel_signal=None):
+    if interval is None:
+        interval = [0, len(time)]
+
+    else:
+        interval[0] = int(interval[0] * len(time))
+        interval[1] = int(interval[1] * len(time))
+    if intracel_signal is not None:
+        hr = [2]*len(traces)
+        hr.append(1)
+        fig, ax_list = plt.subplots(
+            nrows=(len(traces)+1), ncols=1, sharex=True,
+            gridspec_kw={'height_ratios': hr}
+        )
+        plot_data_list(traces[:, interval[0]:interval[1]:step], time[interval[0]:interval[1]:step],
+                       linewidth=lw, fig=fig, ax_list=ax_list)
+    else:
+        fig, ax_list = plot_data_list(traces[:, interval[0]:interval[1]:step], time[interval[0]:interval[1]:step],
+                                      linewidth=lw)
 
     for key, spike_ind in spike_dict.items():
         if type(hide_clust_list) is list and key in hide_clust_list:
@@ -45,31 +62,36 @@ def plotCompleteDetection(traces, time, spike_dict, template_dict, cluster_color
             else:
                 label = str(key)
 
-            plot_detection(traces, time,
-                           spike_ind,
+            plot_detection(traces,
+                           time,
+                           spike_ind[(spike_ind > interval[0]) & (spike_ind < interval[1])] - interval[0],
                            channels=channels,
                            peak_color=cluster_colors[key],
                            label=label,
-
                            ax_list=ax_list)
     hdl = []
     lbl = []
+    if intracel_signal is not None:
+        ax_list[2].plot(time[interval[0]:interval[1]], intracel_signal[interval[0]:interval[1]], color='k')
     for ax in ax_list:
         ax.grid(linestyle='dotted')
         handle, label = ax.get_legend_handles_labels()
         hdl.extend(handle)
         lbl.extend(label)
     if legend:
-        ax_list[0].legend(hdl, lbl, loc='upper right')
+        # ax_list[0].legend(hdl, lbl, loc='upper right')
+        fig.legend(hdl, lbl, loc='upper right')
         # plt.legend(loc='upper right')
 
-    return ax_list[0]
+    return fig, ax_list
 
 
 def plot_data_list(data_list,
                    time_axes,
                    linewidth=0.2,
-                   signal_color='black'):
+                   signal_color='black',
+                   fig=None,
+                   ax_list=None):
     """Plots data together with detected events.
 
     Parameters
@@ -87,8 +109,11 @@ def plot_data_list(data_list,
     plot is generated.
     """
     nb_chan = len(data_list)
+    if (fig is None) and (ax_list is None):
+        fig, ax_list = plt.subplots(nb_chan, sharex=True)
+    else:
+        assert (fig is not None) or (ax_list is not None), "I need both a fig and its ax_list to work properly"
 
-    fig, ax_list = plt.subplots(nb_chan, sharex=True)
     if nb_chan == 1: ax_list = [ax_list]
 
     for i in range(nb_chan):
@@ -107,7 +132,6 @@ def plot_detection(data_list,
                    time_axes,
                    evts_pos,
                    channels=None,
-                   signal_color='black',
                    peak_color='r',
                    label=None,
                    ax_list=None):
@@ -180,7 +204,7 @@ def plotFreq(spike_freq_dict, color_dict, optional_trace=None, template_dict=Non
     if single_figure:
         j = 1
     else:
-        j = len(spike_freq_dict.keys())
+        j = len(spike_freq_dict.keys())-len(skip_list)
         if optional_trace is not None:
             j += 1
 
@@ -225,6 +249,7 @@ def plotFreq(spike_freq_dict, color_dict, optional_trace=None, template_dict=Non
             # ax.legend()
             ax.grid(linestyle='dotted')
             # ax.get_xaxis().set_visible(False)
+            ax.set_facecolor('lightgray')
             ax.set_xticklabels([])
             ax.legend()
             if not single_figure:
@@ -239,6 +264,7 @@ def plotFreq(spike_freq_dict, color_dict, optional_trace=None, template_dict=Non
 
         ax.plot(optional_trace[0], optional_trace[1], color='k', lw=1)
         ax.grid(linestyle='dotted')
+
         # ax.get_xaxis().set_visible(False)
 
         # ax.get_xaxis().set_visible(True)
@@ -494,7 +520,7 @@ class CrawlingSegmenter():
         for arg in args:
             self.selected_spikes.append(arg)
 
-        cmap = spsortUtils.categorical_cmap(len(self.selected_spikes), 1)
+        cmap = spsortUtils.categorical_cmap(math.ceil(len(self.selected_spikes)/math.ceil(len(self.selected_spikes)/10)), math.ceil(len(self.selected_spikes)/10))
         self.raster_cmap = {}
         i = 0
         for sp in self.selected_spikes:
@@ -521,13 +547,13 @@ class CrawlingSegmenter():
                         # color_list.append(burst_object.color_dict[key])
                         color_list.append(self.raster_cmap[key])
 
-            fig, ax = plt.subplots()
-            ax.eventplot(spike_list, colors=color_list, linewidths=linewidths)
-            ax.set_title('plot no %i' % i)
+            self.fig, self.eventplot_ax = plt.subplots()
+            self.eventplot_ax.eventplot(spike_list, colors=color_list, linewidths=linewidths)
+            self.eventplot_ax.set_title('plot no %i' % i)
             if generate_grid:
                 minor_ticks = np.arange(0, len(spike_list), 10 * len(self.selected_spikes))
-                ax.set_yticks(minor_ticks, minor=True)
-                ax.grid(which='minor', linestyle='--')
+                self.eventplot_ax.set_yticks(minor_ticks, minor=True)
+                self.eventplot_ax.grid(which='minor', linestyle='--')
 
     def concatenateRasterPlot(self, generate_grid=True, split_raster=1, linewidths=1):
 
@@ -561,16 +587,16 @@ class CrawlingSegmenter():
                             spike_list[line_to_extend] = np.append(spike_list[line_to_extend], items + i* self.no_bursts)
                             line_to_extend += 1
 
-        fig, ax = plt.subplots()
-        ax.eventplot(spike_list, colors=color_list, linewidths=linewidths)
+        self.fig, self.eventplot_ax = plt.subplots()
+        self.eventplot_ax.eventplot(spike_list, colors=color_list, linewidths=linewidths)
         if generate_grid:
             minor_ticks = np.arange(-0.5, len(spike_list)-0.5,len(self.selected_spikes))
-            ax.set_yticks(minor_ticks, minor=True)
-            ax.grid(which='minor', linestyle='--')
+            self.eventplot_ax.set_yticks(minor_ticks, minor=True)
+            self.eventplot_ax.grid(which='minor', linestyle='--')
 
         vlines = np.arange(self.no_bursts, split_raster * self.no_bursts + 1, self.no_bursts)
         for ln in vlines:
-            ax.axvline(ln, color='k', linestyle='--', linewidth=1)
+            self.eventplot_ax.axvline(ln, color='k', linestyle='--', linewidth=1)
 
 
 def generateFilenameFromList(filename):

@@ -24,7 +24,7 @@ from sklearn.cluster import KMeans
 import multiprocessing
 import PyLeech.constants as constants
 import PyLeech.filterUtils
-import PyLeech.BurstUtils as BurstUtils
+import PyLeech.burstUtils as BurstUtils
 
 nan = constants.nan
 opp0 = constants.opp0

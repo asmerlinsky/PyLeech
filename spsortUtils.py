@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+
 from scipy.signal import fftconvolve
 from PyLeech import sorting_with_python as swp
 from copy import deepcopy
@@ -17,7 +18,8 @@ import math
 import os
 import _pickle as pickle
 import time
-
+import PyLeech.burstUtils as burstUtils
+import PyLeech.templateDictUtils as tdictUtils
 nan = constants.nan
 opp0 = constants.opp0
 proc_num = constants.proc_num
@@ -47,7 +49,8 @@ class SpSorter:
 
     attrs_list = ['filename', 'time', 'traces', 'sample_freq', 'state', 'peaks_idxs', 'evts', 'evt_interval',
                   'ch_no', 'evt_length', 'evts_median', 'evts_mad', 'evts_max', 'original_good_evts',
-                  'good_evts', 'good_evts_idxs', 'unitary', 'original_clusters', 'km', 'train_clusters', 'cluster_color',
+                  'good_evts', 'good_evts_idxs', 'unitary', 'original_clusters', 'km', 'train_clusters',
+                  'cluster_color',
                   'good_colors', 'template_dict', 'rounds', 'final_spike_dict']
 
     def __init__(self, filename, data=None, time_vect=None, fs=None, verbose=False):
@@ -110,6 +113,27 @@ class SpSorter:
         self.peaks_idxs = swp.peak(peak_detection_data.sum(0), minimal_dist=min_dist)
 
         return self.peaks_idxs
+
+    def smoothAndGetPeaks(self, vect_len=5, threshold=5, min_dist=50):
+        """ Used for smoothing and peak finding
+
+        :param vect_len: lenght of smoothing vector
+        :type vect_len: int
+        :param threshold: threshold for peak detection
+        :type threshold: float
+        :param min_dist: minimum dist between peaks
+        :type min_dist: int
+        :return: peaks indexes
+        :rtype: list
+        """
+        peak_detection_data = np.apply_along_axis(lambda x:
+                                                  fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
+                                                  1, np.array(self.traces))
+        peak_detection_data = (peak_detection_data.transpose() / \
+                               np.apply_along_axis(swp.mad, 1, peak_detection_data)).transpose()
+        peak_detection_data[peak_detection_data < threshold] = 0
+
+        return swp.peak(peak_detection_data.sum(0), minimal_dist=min_dist)
 
     def smoothAndVisualizeThreshold(self, channel=0, vect_len=5, threshold=5, interval=None):
 
@@ -305,6 +329,7 @@ class SpSorter:
         for i in np.sort(good_clusters):
             self.train_clusters[self.train_clusters == i] = j
             j += 1
+        self.generateClustersTemplate()
 
     def mergeClusters(self, c_obj, c_merge):
         if type(c_merge) is list:
@@ -324,6 +349,7 @@ class SpSorter:
                 median = np.apply_along_axis(np.median, 0, self.evts[self.good_evts, :][self.train_clusters == cl, :])
                 mad = np.apply_along_axis(swp.mad, 0, self.evts[self.good_evts, :][self.train_clusters == cl, :])
                 self.template_dict.update({cl: {'median': median, 'mad': mad}})
+        self.assignChannelsToClusters()
 
     def hideBadEvents(self, clust_list=None, pct=0.1):
         self.generateClustersTemplate()
@@ -446,12 +472,15 @@ class SpSorter:
                                 )
         beep()
 
-    def generatePrediction(self, before, after, store_prediction=True):
+    def generatePrediction(self, before, after, store_prediction=True, peak_idxs=None):
         self.before = before
         self.after = after
-
-        round0 = [swp.classify_and_align_evt(self.peaks_idxs[i], self.traces, self.centers, self.before, self.after)
-                  for i in range(len(self.peaks_idxs))]
+        if peak_idxs is not None:
+            round0 = [swp.classify_and_align_evt(peak_idxs[i], self.traces, self.centers, self.before, self.after)
+                      for i in range(len(peak_idxs))]
+        else:
+            round0 = [swp.classify_and_align_evt(self.peaks_idxs[i], self.traces, self.centers, self.before, self.after)
+                      for i in range(len(self.peaks_idxs))]
 
         if store_prediction:
             self.peel = [self.traces]
@@ -500,6 +529,21 @@ class SpSorter:
             self.pred.append(swp.predict_data(self.rounds[-1], centers, nb_channels=self.ch_no,
                                               data_length=len(self.traces[0, :])))
             self.peel.append(self.peel[-1] - self.pred[-1])
+
+    def getSimilarTemplates(self, cluster_no):
+        self.generateClustersTemplate()
+        self.template_dict_comparer = tdictUtils.TemplateComparer(self.template_dict)
+
+        return self.template_dict_comparer.getSimilarTemplates(cluster_no)
+
+    def getSortedTemplateDiffence(self, clust_list=None):
+        try:
+            return self.template_dict_comparer.getSortedTemplateDifference(clust_list=clust_list)
+        except AttributeError:
+            self.generateClustersTemplate()
+            self.template_dict_comparer = tdictUtils.TemplateComparer(self.template_dict)
+            return self.template_dict_comparer.getSortedTemplateDifference(clust_list=clust_list)
+
 
     def mergeRoundsResults(self):
         round_list = [item for sublist in self.rounds for item in sublist]
@@ -604,7 +648,7 @@ class SpSorter:
             scatter_matrix(df, alpha=0.2, s=4, c='k', figsize=(6, 6),
                            diagonal='kde', marker=".")
 
-    def plotClusters(self, clusts=None, y_lim=None, good_ones=True, add_unclustedred_evts=False):
+    def plotClusters(self, clusts=None, y_lim=None, good_ones=True, add_unclustedred_evts=False, superposed=False):
 
         if add_unclustedred_evts:
             self.getKMeansFullPrediction()
@@ -621,10 +665,13 @@ class SpSorter:
                 plt.axvline(x=i, color='black', lw=1)
             return
 
+        if superposed:
+            plt.figure()
         for i in np.unique(self.train_clusters):
             if clusts is not None and i in clusts:
-                plt.figure()
-                plt.title('cluster %s' % str(i))
+                if not superposed:
+                    plt.figure()
+                    plt.title('cluster %s' % str(i))
 
                 if add_unclustedred_evts:
                     swp.plot_events(self.evts[self.full_cluster == i, :], n_channels=self.ch_no)
@@ -639,8 +686,9 @@ class SpSorter:
 
             elif (clusts is None):
                 if ((i >= 0) and (i != nan) and (i != opp0)) or (not good_ones):
-                    plt.figure()
-                    plt.title('cluster %s' % str(i))
+                    if not superposed:
+                        plt.figure()
+                        plt.title('cluster %s' % str(i))
 
                     if add_unclustedred_evts:
                         swp.plot_events(self.evts[self.full_cluster == i, :], n_channels=self.ch_no)
@@ -714,8 +762,17 @@ class SpSorter:
 
         return fig
 
-    def plotCompleteDetection(self, rounds='All', step=1, interval=None, legend=False, lw=1, clust_list=None):
+    def plotCompleteDetection(self,
+                              rounds='All',
+                              step=1,
+                              interval=None,
+                              legend=False,
+                              lw=1,
+                              clust_list=None,
+                              hide_clust_list=None,
+                              intracel_signal=None):
         self.setRoundColors()
+        self.assignChannelsToClusters()
         if interval is None:
             interval = [0, len(self.time)]
 
@@ -723,8 +780,6 @@ class SpSorter:
             interval[0] = int(interval[0] * len(self.time))
             interval[1] = int(interval[1] * len(self.time))
 
-        plt.figure()
-        ax = plt.subplot()
 
         if type(rounds) is str:
             spike_dict = self.final_spike_dict
@@ -736,45 +791,65 @@ class SpSorter:
 
             spike_dict = {n: np.sort([x[1] for x in data
                                       if x[0] == n]) for n in list(self.centers)}
-        if clust_list is None:
+
+        if (clust_list is None) and (hide_clust_list is None):
             colors = self.cluster_color
-        else:
+        elif clust_list is not None:
             colors = setGoodColors(clust_list)
+        elif hide_clust_list is not None:
+            to_plot_list = [cluster for cluster in list(spike_dict) if cluster not in hide_clust_list]
+            colors = setGoodColors(to_plot_list)
 
-        swp.plot_data_list(self.traces[:, interval[0]:interval[1]:step], self.time[interval[0]:interval[1]:step],
-                           linewidth=lw)
-        line_map = {}
-        i = 0
-        for key, spike_ind in spike_dict.items():
-            if (clust_list is None) or (key in clust_list):
-                try:
-                    channels = self.template_dict[key]['channels']
-                except KeyError:
-                    channels = None
 
-                if key == nan:
-                    label = '?'
-                else:
-                    label = str(key)
+        fig, ax_list = burstUtils.plotCompleteDetection(self.traces,
+                                         self.time,
+                                         spike_dict=spike_dict,
+                                         template_dict=self.template_dict,
+                                         cluster_colors=colors,
+                                         legend=legend,
+                                         lw=lw,
+                                         interval=interval,
+                                         clust_list=clust_list,
+                                         hide_clust_list=hide_clust_list,
+                                         step=step,
+                                         intracel_signal=intracel_signal)
 
-                swp.plot_detection(self.traces[interval[0]:interval[1]], self.time[interval[0]:interval[1]],
-                                   spike_ind[(spike_ind > interval[0]) & (spike_ind < interval[1])] - interval[0],
-                                   channels=channels,
-                                   peak_color=colors[key],
-                                   label=label)
-                line_map[key] = i
-                i += 1
-        if legend:
-            plt.legend(loc='upper right')
+        # fig, ax_list = burstUtils.plot_data_list(self.traces[:, interval[0]:interval[1]:step],
+        #                                          self.time[interval[0]:interval[1]:step],
+        #                                          linewidth=lw)
+        #
+        # i = 0
+        # for key, spike_ind in spike_dict.items():
+        #
+        #     if (clust_list is None) or (key in clust_list):
+        #         try:
+        #             channels = self.template_dict[key]['channels']
+        #         except KeyError:
+        #             channels = None
+        #
+        #         if key == nan:
+        #             label = '?'
+        #         else:
+        #             label = str(key)
+        #
+        #         burstUtils.plot_detection(self.traces[:, interval[0]:interval[1]], self.time[interval[0]:interval[1]],
+        #                                   spike_ind[(spike_ind > interval[0]) & (spike_ind < interval[1])] - interval[
+        #                                       0],
+        #                                   channels=channels,
+        #                                   peak_color=colors[key],
+        #                                   label=label,
+        #                                   ax_list=ax_list)
+        #
 
-        return ax, line_map
+
+        return fig, ax_list
 
     def hideClusterFromAx(self, ax, line_map, cluster):
         if type(cluster) is int:
-            ax.lines[line_map[cluster]].remove()
+            ax.collections[line_map[cluster]].remove()
         elif type(cluster) is list:
             for cl in cluster:
-                ax.lines[line_map[cl]].remove()
+                ax.collections[line_map[cl]].remove()
         else:
             assert False, "cluster must be either int or list of ints"
 
