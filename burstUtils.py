@@ -1,13 +1,13 @@
+import matplotlib.colors
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+from matplotlib import pyplot as plt
 import PyLeech.spikeUtils as spikeUtils
-import PyLeech.spsortUtils as spsortUtils
 import os.path
 from copy import deepcopy
 from PyLeech.constants import *
 import _pickle as pickle
 import math
+
 
 def getInstFreq(time, spike_dict, fs):
     spike_freq_dict = {}
@@ -36,10 +36,10 @@ def plotCompleteDetection(traces, time, spike_dict, template_dict, cluster_color
         interval[0] = int(interval[0] * len(time))
         interval[1] = int(interval[1] * len(time))
     if intracel_signal is not None:
-        hr = [2]*len(traces)
+        hr = [2] * len(traces)
         hr.append(1)
         fig, ax_list = plt.subplots(
-            nrows=(len(traces)+1), ncols=1, sharex=True,
+            nrows=(len(traces) + 1), ncols=1, sharex=True,
             gridspec_kw={'height_ratios': hr}
         )
         plot_data_list(traces[:, interval[0]:interval[1]:step], time[interval[0]:interval[1]:step],
@@ -75,9 +75,12 @@ def plotCompleteDetection(traces, time, spike_dict, template_dict, cluster_color
         ax_list[2].plot(time[interval[0]:interval[1]], intracel_signal[interval[0]:interval[1]], color='k')
     for ax in ax_list:
         ax.grid(linestyle='dotted')
+        removeTicksFromAxis(ax, 'y')
+        removeTicksFromAxis(ax, 'x')
         handle, label = ax.get_legend_handles_labels()
         hdl.extend(handle)
         lbl.extend(label)
+    showTicksFromAxis(ax_list[-1], 'x')
     if legend:
         # ax_list[0].legend(hdl, lbl, loc='upper right')
         fig.legend(hdl, lbl, loc='upper right')
@@ -119,11 +122,7 @@ def plot_data_list(data_list,
     for i in range(nb_chan):
         ax_list[i].plot(time_axes, data_list[i],
                         linewidth=linewidth, color=signal_color)
-        ax_list[i].grid(linestyle='dotted')
-        ax_list[i].get_xaxis().set_visible(False)
-        ax_list[i].get_yaxis().set_visible(False)
 
-    ax_list[-1].get_xaxis().set_visible(True)
     plt.xlabel("Time (s)")
     return fig, ax_list
 
@@ -204,9 +203,9 @@ def plotFreq(spike_freq_dict, color_dict, optional_trace=None, template_dict=Non
     if single_figure:
         j = 1
     else:
-        j = len(spike_freq_dict.keys())-len(skip_list)
-        if optional_trace is not None:
-            j += 1
+        j = len(draw_list) - len(skip_list)
+    if optional_trace is not None:
+        j += 1
 
     hdl = []
     lbl = []
@@ -248,9 +247,8 @@ def plotFreq(spike_freq_dict, color_dict, optional_trace=None, template_dict=Non
                 ax.plot(data0, data1, color=color_dict[key], label=label, ms=ms)
             # ax.legend()
             ax.grid(linestyle='dotted')
-            # ax.get_xaxis().set_visible(False)
+            removeTicksFromAxis(ax, 'x')
             ax.set_facecolor('lightgray')
-            ax.set_xticklabels([])
             ax.legend()
             if not single_figure:
                 i += 1
@@ -263,11 +261,23 @@ def plotFreq(spike_freq_dict, color_dict, optional_trace=None, template_dict=Non
             ax = plt.subplot(j, 1, i, sharex=ax)
 
         ax.plot(optional_trace[0], optional_trace[1], color='k', lw=1)
-        ax.grid(linestyle='dotted')
+    ax.grid(linestyle='dotted')
+    removeTicksFromAxis(ax, 'y')
+    showTicksFromAxis(ax, 'x')
 
-        # ax.get_xaxis().set_visible(False)
+def removeTicksFromAxis(ax, axis='y'):
+    axis = getattr(ax, axis + 'axis')
+    for tic in axis.get_major_ticks():
+        tic.label1On = tic.label2On = False
+        tic.tick1On = tic.tick2On = False
 
-        # ax.get_xaxis().set_visible(True)
+def showTicksFromAxis(ax, axis='y'):
+    axis = getattr(ax, axis + 'axis')
+    for tic in axis.get_major_ticks():
+        # tic.label1On = tic.label2On = True
+        # tic.tick1On = tic.tick2On = True
+        tic.label1On = True
+        tic.tick1On = True
 
 
 def is_outlier(points, thresh=3.5):
@@ -520,7 +530,8 @@ class CrawlingSegmenter():
         for arg in args:
             self.selected_spikes.append(arg)
 
-        cmap = spsortUtils.categorical_cmap(math.ceil(len(self.selected_spikes)/math.ceil(len(self.selected_spikes)/10)), math.ceil(len(self.selected_spikes)/10))
+        cmap = categorical_cmap(math.ceil(len(self.selected_spikes) / math.ceil(len(self.selected_spikes) / 10)),
+                                math.ceil(len(self.selected_spikes) / 10))
         self.raster_cmap = {}
         i = 0
         for sp in self.selected_spikes:
@@ -584,13 +595,14 @@ class CrawlingSegmenter():
                     line_to_extend += 1
                     for key, items in self.segment_list[j].items():
                         if key != self.de3_neuron and key in self.selected_spikes:
-                            spike_list[line_to_extend] = np.append(spike_list[line_to_extend], items + i* self.no_bursts)
+                            spike_list[line_to_extend] = np.append(spike_list[line_to_extend],
+                                                                   items + i * self.no_bursts)
                             line_to_extend += 1
 
         self.fig, self.eventplot_ax = plt.subplots()
         self.eventplot_ax.eventplot(spike_list, colors=color_list, linewidths=linewidths)
         if generate_grid:
-            minor_ticks = np.arange(-0.5, len(spike_list)-0.5,len(self.selected_spikes))
+            minor_ticks = np.arange(-0.5, len(spike_list) - 0.5, len(self.selected_spikes))
             self.eventplot_ax.set_yticks(minor_ticks, minor=True)
             self.eventplot_ax.grid(which='minor', linestyle='--')
 
@@ -619,3 +631,22 @@ def generatePklFilename(filename):
 
     filename = 'RegistrosDP_PP/' + filename
     return filename
+
+
+def categorical_cmap(nc, nsc, cmap="tab10", continuous=False):
+    if nc > plt.get_cmap(cmap).N:
+        raise ValueError("Too many categories for colormap.")
+    if continuous:
+        ccolors = plt.get_cmap(cmap)(np.linspace(0, 1, nc))
+    else:
+        ccolors = plt.get_cmap(cmap)(np.arange(nc, dtype=int))
+    cols = np.zeros((nc * nsc, 3))
+    for i, c in enumerate(ccolors):
+        chsv = matplotlib.colors.rgb_to_hsv(c[:3])
+        arhsv = np.tile(chsv, nsc).reshape(nsc, 3)
+        arhsv[:, 1] = np.linspace(chsv[1], 0.25, nsc)
+        arhsv[:, 2] = np.linspace(chsv[2], 1, nsc)
+        rgb = matplotlib.colors.hsv_to_rgb(arhsv)
+        cols[i * nsc:(i + 1) * nsc, :] = rgb
+    cmap = matplotlib.colors.ListedColormap(cols)
+    return cmap

@@ -16,6 +16,28 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 def generateTimeVector(datalen, sampling_rate):
     return np.linspace(2e-4, datalen / int(sampling_rate), datalen)
 
+def getArraysFromAbfFiles(file_list, channels=['IN5', 'IN6', 'Vm1', 'Vm2'], print_ch_info=False):
+    array_dict = {}
+    for channel in channels:
+        array_dict[channel] = np.array([])
+
+    for filename in file_list:
+        block = ExtendedAxonRawIo(filename)
+        ch_info = block.ch_info
+
+        if print_ch_info:
+            [print(ch, item) for ch, item in ch_info.items()]
+
+        for channel in channels:
+            array_dict[channel] = np.append(array_dict[channel], np.array(block.getSignal_single_segment(channel)))
+
+        fs = block.get_signal_sampling_rate()
+
+        del block
+
+    time = generateTimeVector(len(array_dict[list(array_dict)[0]]), fs)
+    return array_dict, time, fs
+
 
 class ExtendedAxonRawIo(neo.rawio.AxonRawIO):
 
