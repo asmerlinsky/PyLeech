@@ -8,8 +8,8 @@ Created on Wed Oct  3 11:40:23 2018
 import os
 import inspect
 import sys
-import PyLeech.AbfExtension as AbfE
-import PyLeech.T_DP_classes as T_DP_classes
+import PyLeech.Utils.AbfExtension as AbfE
+import PyLeech.Utils.T_DP_classes as T_DP_classes
 import numpy as np
 import glob
 import matplotlib.pyplot as plt
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     bin_range = 5
     bins = np.arange(0, 35, bin_range)
     neuron_medians = []
-
+    shifts = np.array(())
     
     
     for key, nerve_thres in file_list.items():
@@ -133,7 +133,7 @@ if __name__ == '__main__':
 
 
             results = T_DP_classes.TIpspDpsResults(T_obj, DP_obj)
-
+            shifts = np.append(shifts, results.getIpspPhaseShift())
             for key1 in neuron_dict.keys():
                 for key2 in neuron_dict[key1].keys():
                     neuron_dict[key1][key2] += results.result_dict[key1][key2]
@@ -166,7 +166,7 @@ if __name__ == '__main__':
         """
 
         neuron_par_area_freq_single_burst = np.array(neuron_par_area_freq_single_burst)
-        print(key)
+        # print(key)
         T_DP_classes.normResults(neuron_par_area_freq_single_burst, norm_freq=20, rg=bin_range)
         plot = T_DP_classes.resultsPlotter(neuron_par_area_freq_single_burst, bins, neuron=key)
         neuron_medians.append(plot.getMeansResult(get_median=False))
@@ -207,4 +207,7 @@ if __name__ == '__main__':
         plt.figure()
         plt.boxplot(medians_list, positions=bins, widths=1.5)
         plt.xlim([bins[0]-5, bins[-1]+5])
+
+        plt.figure()
+        plt.hist(shifts, bins=50)
 

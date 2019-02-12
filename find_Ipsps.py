@@ -9,7 +9,7 @@ import inspect
 import os
 import sys
 
-from T_DP_classes import TInfo, getIsi
+from PyLeech.Utils.T_DP_classes import TInfo, getIsi
 
 sys.path.append(os.getcwd())
 sys.path.append(os.getcwd() + '\\PyLeech')
@@ -18,8 +18,8 @@ file_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe(
 wdir = os.path.dirname(file_dir)
 os.chdir(wdir)
 
-import AbfExtension as AbfE
-from filterUtils import *
+import PyLeech.Utils.AbfExtension as AbfE
+from PyLeech.filterUtils import *
 import glob
 
 block = None

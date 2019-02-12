@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy
-import PyLeech.constants as constants
+import PyLeech.Utils.constants as constants
 
 nan = constants.nan
 opp0 = constants.opp0
@@ -504,7 +504,6 @@ def mk_aligned_events(positions, data, before=14, after=30):
     """
     from scipy.signal import fftconvolve
     from numpy import apply_along_axis as apply
-    from scipy.spatial.distance import squareform
     n_evts = len(positions)
     new_positions = positions.copy()
     jitters = np.zeros(n_evts)
@@ -822,17 +821,3 @@ def predict_data(class_pos_jitter_list,
     return res
 
 
-def plotDataPredictionAndResult(time, data, pred):
-    res = data - pred
-    for i in range(len(data)):
-        fig = plt.figure(figsize=(16, 8))
-        ax1 = fig.add_subplot(3, 1, 1)
-        ax2 = fig.add_subplot(3, 1, 2, sharex=ax1, sharey=ax1)
-        ax3 = fig.add_subplot(3, 1, 3, sharex=ax1, sharey=ax1)
-        fig.suptitle('channel ' + str(i))
-        ax1.set_title('original data')
-        ax1.plot(time, data[i,], color='black')
-        ax2.set_title('prediction')
-        ax2.plot(time, pred[i,], color='black')
-        ax3.set_title('peeled')
-        ax3.plot(time, res[i,], color='black')

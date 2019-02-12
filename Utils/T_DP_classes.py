@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal as spsig
 import os.path
-import PyLeech.spikeUtils as sU
+import PyLeech.Utils.spikeUtils as sU
 
 
 def normResults(par, norm_freq=15, rg=5):
@@ -104,7 +104,43 @@ class TIpspDpsResults():
         self.par_area_freq = np.array(self.par_area_freq)
         self.par_dpmatch_freq = np.array(self.par_dpmatch_freq)
 
+    def getIpspPhaseShift(self):
+        i = 0
+        j = 0
+        shift = []
+        if (self.total_dp_bursts>1) and (self.total_ipsps_bursts>1):
+            while i < (self.total_dp_bursts-1):
+                dp_burst = self.DP.burst_obj_list[i]
+                next_dp_burst = self.DP.burst_obj_list[i+1]
+                while j < self.total_ipsps_bursts:
+                    ipsp_burst = self.T.burst_obj_list[j]
+                    ipsp_center = np.median(ipsp_burst.spike_list)
+                    dp_center = np.median(dp_burst.spike_list)
+                    next_dp_center = np.median(next_dp_burst.spike_list)
+                    dp_tau = next_dp_center - dp_center
 
+
+                    if (ipsp_center < dp_center) or (np.abs(ipsp_center-dp_center) < np.abs(ipsp_center-next_dp_center)):
+                        shift.append((ipsp_center-dp_center)/ dp_tau)
+                        j += 1
+                    elif ipsp_center>next_dp_center:
+                        break
+                    else:
+                        shift.append((ipsp_center - next_dp_center) / dp_tau)
+                        j += 1
+                        break
+
+                i += 1
+
+            dp_burst = self.DP.burst_obj_list[i]
+            dp_center = np.median(dp_burst.spike_list)
+            while j < self.total_ipsps_bursts:
+                ipsp_burst = self.T.burst_obj_list[j]
+                ipsp_center = np.median(ipsp_burst.spike_list)
+                shift.append((ipsp_center - dp_center)/dp_tau)
+                j += 1
+
+        return np.array(shift)
 
 
 

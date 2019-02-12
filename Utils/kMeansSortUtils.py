@@ -1,17 +1,19 @@
 import os
-import PyLeech.spsortUtils as spsortUtils
+
+import PyLeech.Utils.SpSorter
+import PyLeech.Utils.spsortUtils as spsortUtils
 from copy import deepcopy
-from PyLeech.constants import *
+from PyLeech.Utils.constants import *
 import _pickle as pickle
 import numpy as np
 from scipy.signal import fftconvolve
-import PyLeech.sorting_with_python as swp
+import PyLeech.Utils.sorting_with_python as swp
 import matplotlib.pyplot as plt
 import time
 from sklearn.cluster import KMeans
 
 
-class KMeansSorter(spsortUtils.SpSorter):
+class KMeansSorter(PyLeech.Utils.SpSorter.SpSorter):
     """KMeans sorter class
 
     Parameters
@@ -33,7 +35,7 @@ class KMeansSorter(spsortUtils.SpSorter):
 
     """
 
-    attrs_list = deepcopy(spsortUtils.SpSorter.attrs_list)
+    attrs_list = deepcopy(PyLeech.Utils.SpSorter.SpSorter.attrs_list)
     attrs_list.append('prediction')
     attrs_list.append('train_evts')
 
@@ -110,7 +112,7 @@ class KMeansSorter(spsortUtils.SpSorter):
             dim_size = 10
         self.km_dim_size = dim_size
 
-        if save and os.path.isfile(spsortUtils.generatePklFilename(self.filename)):
+        if save and os.path.isfile(spsortUtils.generatePklFilename(self.filename, None)):
             print('Warning, this will overwrite current pkl')
             ipt = input('enter any key if you want to exit')
             ipt = str(ipt)
@@ -229,9 +231,9 @@ class KMeansSorter(spsortUtils.SpSorter):
     def saveResults(self, filename=None):
 
         if filename is None:
-            filename = spsortUtils.generatePklFilename(self.filename)
+            filename = spsortUtils.generatePklFilename(self.filename, None)
         else:
-            filename = spsortUtils.generatePklFilename(filename)
+            filename = spsortUtils.generatePklFilename(filename, None)
 
         results = {}
         print(KMeansSorter.attrs_list)

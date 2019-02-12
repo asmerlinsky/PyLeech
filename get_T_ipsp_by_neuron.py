@@ -16,14 +16,13 @@ os.chdir(wdir)
 sys.path.append(wdir)
 sys.path.append(file_dir)
 
-import AbfExtension as AbfE
+import PyLeech.Utils.AbfExtension as AbfE
 import scipy.signal as spsig
-import spikeUtils as sU
+import PyLeech.Utils.spikeUtils as sU
 import numpy as np
 from shutil import copyfile
-import pandas as pd
 import glob
-import json_numpy
+import PyLeech.Utils.json_numpy as json_numpy
 
 '''
 pass filename : spike_amp (as [])

@@ -1,30 +1,24 @@
-import numpy as np
-import matplotlib.pyplot as plt
-
-from scipy.signal import fftconvolve
-from PyLeech import sorting_with_python as swp
+import csv
+import os
+import pickle as pickle
+import time
 from copy import deepcopy
-from sklearn.cluster import KMeans
+from subprocess import Popen
+
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
 from numpy.linalg import svd
 from pandas.plotting import scatter_matrix
-import pandas as pd
-import multiprocessing
-from subprocess import Popen
-import csv
-import winsound
-import PyLeech.constants as constants
-import matplotlib.colors
-import math
-import os
-import _pickle as pickle
-import time
-import PyLeech.burstUtils as burstUtils
-import PyLeech.templateDictUtils as tdictUtils
-nan = constants.nan
-opp0 = constants.opp0
-proc_num = constants.proc_num
+from scipy.signal import fftconvolve
+from sklearn.cluster import KMeans
 
+import PyLeech.Utils.burstUtils
+from PyLeech.Utils import templateDictUtils as tdictUtils, sorting_with_python as swp
+from PyLeech.Utils.spsortUtils import good_evts_fct, proc_num, generatePklFilename, beep, nan, opp0, getGoodClusters, \
+    generateClustersTemplate, getTemplateDictSubset
 
+# noinspection PyPep8,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit
 class SpSorter:
     """Spike sorter class
 
@@ -47,13 +41,13 @@ class SpSorter:
 
     """
 
-    attrs_list = ['filename', 'time', 'traces', 'sample_freq', 'state', 'peaks_idxs', 'evts', 'evt_interval',
+    attrs_list = ['filename', 'folder', 'time', 'traces', 'sample_freq', 'state', 'peaks_idxs', 'evts', 'evt_interval',
                   'ch_no', 'evt_length', 'evts_median', 'evts_mad', 'evts_max', 'original_good_evts',
                   'good_evts', 'good_evts_idxs', 'unitary', 'original_clusters', 'km', 'train_clusters',
                   'cluster_color',
                   'good_colors', 'template_dict', 'rounds', 'final_spike_dict']
 
-    def __init__(self, filename, data=None, time_vect=None, fs=None, verbose=False):
+    def __init__(self, filename, folder=None, data=None, time_vect=None, fs=None, verbose=False):
 
         if data is None or time_vect is None or fs is None:
             print('Loading data from pickle')
@@ -75,7 +69,7 @@ class SpSorter:
             self.sample_freq = fs
             self.time = time_vect
             self.discretization = [np.min(np.diff(np.sort(np.unique(x)))) for x in self.traces]
-
+            self.folder = folder
             self.normed = False
 
             self.verbose = verbose
@@ -106,7 +100,7 @@ class SpSorter:
         peak_detection_data = np.apply_along_axis(lambda x:
                                                   fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
                                                   1, np.array(self.traces))
-        peak_detection_data = (peak_detection_data.transpose() / \
+        peak_detection_data = (peak_detection_data.transpose() /
                                np.apply_along_axis(swp.mad, 1, peak_detection_data)).transpose()
         peak_detection_data[peak_detection_data < threshold] = 0
 
@@ -129,8 +123,8 @@ class SpSorter:
         peak_detection_data = np.apply_along_axis(lambda x:
                                                   fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
                                                   1, np.array(self.traces))
-        peak_detection_data = (peak_detection_data.transpose() / \
-                               np.apply_along_axis(swp.mad, 1, peak_detection_data)).transpose()
+        peak_detection_data = (
+                    peak_detection_data.transpose() / np.apply_along_axis(swp.mad, 1, peak_detection_data)).transpose()
         peak_detection_data[peak_detection_data < threshold] = 0
 
         return swp.peak(peak_detection_data.sum(0), minimal_dist=min_dist)
@@ -145,8 +139,7 @@ class SpSorter:
         data_filtered = np.apply_along_axis(lambda x:
                                             fftconvolve(x, np.array([1] * vect_len) / float(vect_len), 'same'),
                                             1, self.traces)
-        data_filtered = (data_filtered.transpose() / \
-                         np.apply_along_axis(swp.mad, 1, data_filtered)).transpose()
+        data_filtered = (data_filtered.transpose() / np.apply_along_axis(swp.mad, 1, data_filtered)).transpose()
 
         data_filtered[data_filtered < threshold] = 0
 
@@ -199,7 +192,12 @@ class SpSorter:
                          precompute_distances=True,
                          copy_x=True, n_jobs=n_jobs)
 
-        if save and os.path.isfile(generatePklFilename(self.filename)):
+        try:
+            isfile = os.path.isfile(generatePklFilename(self.filename, self.folder))
+        except:
+            isfile = os.path.isfile(generatePklFilename(self.filename))
+
+        if save and isfile:
             print('Warning, this will overwrite current pkl')
             ipt = input('enter any key if you want to exit')
             ipt = str(ipt)
@@ -245,6 +243,8 @@ class SpSorter:
                 print("Couldn\'t save object due to following error:")
                 print(e)
                 pass
+        else:
+            print("Not saving results")
         return self.train_clusters
 
     def getKMeansFullPrediction(self):
@@ -282,7 +282,7 @@ class SpSorter:
 
             try:
                 del self.template_dict[bad_clust]
-            except:
+            except KeyError:
                 pass
 
         elif type(bad_clust) is list:
@@ -293,7 +293,7 @@ class SpSorter:
                     self.train_clusters[self.train_clusters == cl] = -cl
                 try:
                     del self.template_dict[cl]
-                except:
+                except KeyError:
                     pass
 
         elif bad_clust is None:
@@ -310,7 +310,7 @@ class SpSorter:
                         self.train_clusters[self.train_clusters == cl] = -cl
                     try:
                         del self.template_dict[cl]
-                    except:
+                    except KeyError:
                         pass
 
     def renumberClusters(self):
@@ -343,7 +343,8 @@ class SpSorter:
         self.generateClustersTemplate()
 
     def generateClustersTemplate(self):
-        self.template_dict = {}
+        self.template_dict = generateClustersTemplate(self.train_clusters, self.evts, self.good_evts)
+
         for cl in np.unique(self.train_clusters):
             if cl >= 0 and (cl != nan) and (cl != opp0):
                 median = np.apply_along_axis(np.median, 0, self.evts[self.good_evts, :][self.train_clusters == cl, :])
@@ -351,7 +352,7 @@ class SpSorter:
                 self.template_dict.update({cl: {'median': median, 'mad': mad}})
         self.assignChannelsToClusters()
 
-    def hideBadEvents(self, clust_list=None, pct=0.1):
+    def hideBadEvents(self, pct=0.1, clust_list=None):
         self.generateClustersTemplate()
 
         if clust_list is None:
@@ -391,7 +392,7 @@ class SpSorter:
         self.train_clusters = deepcopy(self.original_clusters)
         self.good_evts = deepcopy(self.original_good_evts)
 
-    def getPcaBase(self, plot_vectors=False, vect_num=8):
+    def getPcaBase(self, vect_num=8, plot_vectors=False):
 
         evts_in_use = self.evts
 
@@ -512,8 +513,8 @@ class SpSorter:
                                                                   'same'),
                                                       1, np.array(self.peel[-1]))
 
-            peak_detection_data = (peak_detection_data.transpose() / \
-                                   np.apply_along_axis(swp.mad, 1, peak_detection_data)).transpose()
+            peak_detection_data = (peak_detection_data.transpose() / np.apply_along_axis(swp.mad, 1,
+                                                                                         peak_detection_data)).transpose()
 
             peak_detection_data[peak_detection_data < threshold] = 0
             if not store_mid_steps:
@@ -530,20 +531,23 @@ class SpSorter:
                                               data_length=len(self.traces[0, :])))
             self.peel.append(self.peel[-1] - self.pred[-1])
 
+    def getSortedTemplateDifference(self, clust_list=None):
+
+        if clust_list is None:
+            clust_list = list(self.final_spike_dict)
+
+        template_dict_subset = getTemplateDictSubset(clust_list, self.template_dict)
+
+        self.template_dict_comparer = tdictUtils.TemplateComparer(template_dict_subset)
+        return self.template_dict_comparer.getSortedTemplateDifference(clust_list=clust_list)
+
     def getSimilarTemplates(self, cluster_no):
-        self.generateClustersTemplate()
-        self.template_dict_comparer = tdictUtils.TemplateComparer(self.template_dict)
 
-        return self.template_dict_comparer.getSimilarTemplates(cluster_no)
-
-    def getSortedTemplateDiffence(self, clust_list=None):
         try:
-            return self.template_dict_comparer.getSortedTemplateDifference(clust_list=clust_list)
+            return self.template_dict_comparer.getSimilarTemplates(cluster_no)
         except AttributeError:
-            self.generateClustersTemplate()
-            self.template_dict_comparer = tdictUtils.TemplateComparer(self.template_dict)
-            return self.template_dict_comparer.getSortedTemplateDifference(clust_list=clust_list)
-
+            self.getSortedTemplateDifference()
+            self.template_dict_comparer.getSimilarTemplates(cluster_no)
 
     def mergeRoundsResults(self):
         round_list = [item for sublist in self.rounds for item in sublist]
@@ -557,30 +561,36 @@ class SpSorter:
         clus_obj = clust_list[0]
         clus_rm = clust_list[1:]
         for i in clus_rm:
-            self.final_spike_dict[clus_obj] = np.concatenate(
-                (self.final_spike_dict[clus_obj], self.final_spike_dict[i]))
-            del self.final_spike_dict[i]
+            try:
+                self.final_spike_dict[clus_obj] = np.concatenate(
+                    (self.final_spike_dict[clus_obj], self.final_spike_dict[i]))
+                del self.final_spike_dict[i]
+            except KeyError:
+                print("%i didn't exist, it might have been merged already" % i)
         self.final_spike_dict[clus_obj] = np.sort(self.final_spike_dict[clus_obj])
 
-    def getSpikecount(self, round=0):
+    def getSpikecount(self, round_no=0):
         for key in list(self.centers.keys()):
-            print(key, len([x[1] for x in self.rounds[round] if x[0] == key]))
-        print(key, len([x[1] for x in self.rounds[round] if x[0] == nan]))
+            print(key, len([x[1] for x in self.rounds[round_no] if x[0] == key]))
+        print(key, len([x[1] for x in self.rounds[round_no] if x[0] == nan]))
 
     def setGoodColors(self):
         good_clusters = getGoodClusters(np.unique(self.train_clusters))
-        self.cluster_color = setGoodColors(good_clusters)
+        self.cluster_color = PyLeech.Utils.burstUtils.setGoodColors(good_clusters)
 
     def setRoundColors(self):
         round_keys = list(self.final_spike_dict.keys())
-        self.cluster_color = setGoodColors(round_keys)
+        self.cluster_color = PyLeech.Utils.burstUtils.setGoodColors(round_keys)
 
-    def saveResults(self, filename=None):
+    def saveResults(self, filename=None, folder=None):
         if filename is None:
-            filename = generatePklFilename(self.filename)
-        else:
-            filename = generatePklFilename(filename)
-
+            filename = self.filename
+        if folder is None:
+            try:
+                folder = self.folder
+            except:
+                pass
+        filename = generatePklFilename(filename, folder)
         results = {}
 
         for attr in SpSorter.attrs_list:
@@ -678,13 +688,13 @@ class SpSorter:
                 else:
                     swp.plot_events(self.evts[self.good_evts, :][self.train_clusters == i, :], n_channels=self.ch_no)
 
-                for i in np.arange(self.evt_interval[0], self.evt_length * self.ch_no, self.evt_length):
-                    plt.axvline(x=i, color='black', lw=1)
+                for j in np.arange(self.evt_interval[0], self.evt_length * self.ch_no, self.evt_length):
+                    plt.axvline(x=j, color='black', lw=1)
 
                 if y_lim is not None:
                     plt.ylim(y_lim)
 
-            elif (clusts is None):
+            elif clusts is None:
                 if ((i >= 0) and (i != nan) and (i != opp0)) or (not good_ones):
                     if not superposed:
                         plt.figure()
@@ -696,8 +706,8 @@ class SpSorter:
                         swp.plot_events(self.evts[self.good_evts, :][self.train_clusters == i, :],
                                         n_channels=self.ch_no)
 
-                    for i in np.arange(self.evt_interval[0], self.evt_length * self.ch_no, self.evt_length):
-                        plt.axvline(x=i, color='black', lw=1)
+                    for j in np.arange(self.evt_interval[0], self.evt_length * self.ch_no, self.evt_length):
+                        plt.axvline(x=j, color='black', lw=1)
                     if y_lim is not None:
                         plt.ylim(y_lim)
 
@@ -706,7 +716,7 @@ class SpSorter:
         if clust_list is None:
             clust_list = []
 
-        colors = setGoodColors(np.unique(self.train_clusters))
+        colors = PyLeech.Utils.burstUtils.setGoodColors(np.unique(self.train_clusters))
         iter_clusts = np.unique(self.train_clusters)
 
         plt.figure()
@@ -714,7 +724,7 @@ class SpSorter:
                            linewidth=lw)
 
         for i in iter_clusts:
-            if (((i < 0) or (i == nan) or (i == opp0))):
+            if (i < 0) or (i == nan) or (i == opp0):
                 continue
             if (len(clust_list) == 0) or (i in clust_list):
                 try:
@@ -731,26 +741,29 @@ class SpSorter:
         if legend:
             plt.legend(loc='upper right')
 
+    # noinspection PyUnboundLocalVariable
     def plotTemplates(self, clust_list=None, new_figure=True):
         if new_figure:
             fig = plt.figure()
 
+
         self.generateClustersTemplate()
 
         if clust_list is None:
-            try:
-                clust_list = list(self.template_dict.keys())
-            except:
-                clust_list = list(self.template_dict.keys())
+
+            clust_list = list(self.template_dict.keys())
+
             self.setGoodColors()
             colors = self.cluster_color
         elif type(clust_list) is int:
             clust_list = [clust_list]
-            colors = setGoodColors(clust_list)
+            colors = PyLeech.Utils.burstUtils.setGoodColors(clust_list)
         elif (type(clust_list) is list) or (type(clust_list) is np.ndarray):
-            colors = setGoodColors(clust_list)
+            colors = PyLeech.Utils.burstUtils.setGoodColors(clust_list)
         else:
             assert False, "clust_list must be either a list or an int"
+
+
 
         for key, item in self.template_dict.items():
             if key in clust_list:
@@ -762,6 +775,7 @@ class SpSorter:
 
         return fig
 
+    # noinspection PyTypeChecker,PyUnboundLocalVariable
     def plotCompleteDetection(self,
                               rounds='All',
                               step=1,
@@ -780,7 +794,6 @@ class SpSorter:
             interval[0] = int(interval[0] * len(self.time))
             interval[1] = int(interval[1] * len(self.time))
 
-
         if type(rounds) is str:
             spike_dict = self.final_spike_dict
 
@@ -795,65 +808,27 @@ class SpSorter:
         if (clust_list is None) and (hide_clust_list is None):
             colors = self.cluster_color
         elif clust_list is not None:
-            colors = setGoodColors(clust_list)
+            clust_list.sort()
+            colors = PyLeech.Utils.burstUtils.setGoodColors(clust_list)
         elif hide_clust_list is not None:
             to_plot_list = [cluster for cluster in list(spike_dict) if cluster not in hide_clust_list]
-            colors = setGoodColors(to_plot_list)
+            to_plot_list.sort()
+            colors = PyLeech.Utils.burstUtils.setGoodColors(to_plot_list)
 
-
-        fig, ax_list = burstUtils.plotCompleteDetection(self.traces,
-                                         self.time,
-                                         spike_dict=spike_dict,
-                                         template_dict=self.template_dict,
-                                         cluster_colors=colors,
-                                         legend=legend,
-                                         lw=lw,
-                                         interval=interval,
-                                         clust_list=clust_list,
-                                         hide_clust_list=hide_clust_list,
-                                         step=step,
-                                         intracel_signal=intracel_signal)
-
-        # fig, ax_list = burstUtils.plot_data_list(self.traces[:, interval[0]:interval[1]:step],
-        #                                          self.time[interval[0]:interval[1]:step],
-        #                                          linewidth=lw)
-        #
-        # i = 0
-        # for key, spike_ind in spike_dict.items():
-        #
-        #     if (clust_list is None) or (key in clust_list):
-        #         try:
-        #             channels = self.template_dict[key]['channels']
-        #         except KeyError:
-        #             channels = None
-        #
-        #         if key == nan:
-        #             label = '?'
-        #         else:
-        #             label = str(key)
-        #
-        #         burstUtils.plot_detection(self.traces[:, interval[0]:interval[1]], self.time[interval[0]:interval[1]],
-        #                                   spike_ind[(spike_ind > interval[0]) & (spike_ind < interval[1])] - interval[
-        #                                       0],
-        #                                   channels=channels,
-        #                                   peak_color=colors[key],
-        #                                   label=label,
-        #                                   ax_list=ax_list)
-        #
-
+        fig, ax_list = PyLeech.Utils.burstUtils.plotCompleteDetection(self.traces,
+                                                                      self.time,
+                                                                      spike_dict=spike_dict,
+                                                                      template_dict=self.template_dict,
+                                                                      cluster_colors=colors,
+                                                                      legend=legend,
+                                                                      lw=lw,
+                                                                      interval=interval,
+                                                                      clust_list=clust_list,
+                                                                      hide_clust_list=hide_clust_list,
+                                                                      step=step,
+                                                                      intracel_signal=intracel_signal)
 
         return fig, ax_list
-
-    def hideClusterFromAx(self, ax, line_map, cluster):
-        if type(cluster) is int:
-            ax.collections[line_map[cluster]].remove()
-        elif type(cluster) is list:
-            for cl in cluster:
-                ax.collections[line_map[cl]].remove()
-        else:
-            assert False, "cluster must be either int or list of ints"
-
-        ax.legend()
 
     def plotTraceAndStd(self, channel=0, legend=False, interval=None):
         """ To be used after mad normalization
@@ -888,10 +863,6 @@ class SpSorter:
 
         Parameters
         ----------
-        data_list: a list of numpy arrays of dimension 1 that should all
-                   be of the same length (not checked).
-        time_axes: an array with as many elements as the components of
-                   data_list. The time values of the abscissa.
         linewidth: the width of the lines drawing the curves.
         color: the color of the curves.
 
@@ -948,6 +919,7 @@ class SpSorter:
         else:
             swp.plot_events(self.evts, evts_no, n_channels=self.ch_no)
 
+    # noinspection PyTypeChecker,PyTypeChecker
     def visualizeCleanEvents(self, thresholds=None):
         if thresholds is None:
             thresholds = [1, 10, 20]
@@ -980,6 +952,7 @@ class SpSorter:
 
             ax[1].set_title('bad events')
 
+    # noinspection PyShadowingNames
     def plotPeeling(self, peel_step=0, time=None, to_peel_data=None, pred=None):
         if time is None:
             time = self.time
@@ -988,95 +961,4 @@ class SpSorter:
         if pred is None:
             pred = self.pred[peel_step]
 
-        swp.plotDataPredictionAndResult(time, to_peel_data, pred)
-
-
-def categorical_cmap(nc, nsc, cmap="tab10", continuous=False):
-    if nc > plt.get_cmap(cmap).N:
-        raise ValueError("Too many categories for colormap.")
-    if continuous:
-        ccolors = plt.get_cmap(cmap)(np.linspace(0, 1, nc))
-    else:
-        ccolors = plt.get_cmap(cmap)(np.arange(nc, dtype=int))
-    cols = np.zeros((nc * nsc, 3))
-    for i, c in enumerate(ccolors):
-        chsv = matplotlib.colors.rgb_to_hsv(c[:3])
-        arhsv = np.tile(chsv, nsc).reshape(nsc, 3)
-        arhsv[:, 1] = np.linspace(chsv[1], 0.25, nsc)
-        arhsv[:, 2] = np.linspace(chsv[2], 1, nsc)
-        rgb = matplotlib.colors.hsv_to_rgb(arhsv)
-        cols[i * nsc:(i + 1) * nsc, :] = rgb
-    cmap = matplotlib.colors.ListedColormap(cols)
-    return cmap
-
-
-def good_evts_fct(samp, thr=3):
-    samp_med = np.apply_along_axis(np.median, 0, samp)
-    samp_mad = np.apply_along_axis(swp.mad, 0, samp)
-    above = samp_med > 0
-    samp_r = samp.copy()
-    for i in range(samp.shape[0]): samp_r[i, above] = 0
-    samp_med[above] = 0
-    res = np.apply_along_axis(lambda x:
-                              np.all(abs((x - samp_med) / samp_mad) < thr),
-                              1, samp_r)
-    return res
-
-
-def setColors(clust_no, num_col=10):
-    tot_cols = 2 * len(clust_no) + 1
-
-    cmap = categorical_cmap(num_col, math.ceil(tot_cols / num_col))
-    j = 0
-    cluster_color = {}
-    for i in clust_no:
-        cluster_color.update({i: [cmap(j)]})
-        j += 1
-        if i == 0:
-            cluster_color.update({opp0: [cmap(j)]})
-        else:
-            cluster_color.update({-i: [cmap(j)]})
-        j += 1
-    cluster_color.update({nan: [cmap(j)]})
-    return cluster_color
-
-
-def getGoodClusters(unique_clust_list):
-    return unique_clust_list[(unique_clust_list >= 0) & (unique_clust_list != opp0) & (unique_clust_list != nan)]
-
-
-def setGoodColors(good_clusters, num_col=10):
-    cmap = categorical_cmap(num_col, math.ceil(len(good_clusters) / num_col))
-    j = 0
-    cluster_color = {}
-    for i in good_clusters:
-        cluster_color.update({i: cmap(j)})
-        j += 1
-    return cluster_color
-
-
-def beep():
-    for i in range(3):
-        winsound.Beep(2000, 100)
-
-
-def generateFilenameFromList(filename):
-    new_filename = os.path.basename(filename[0]).split('_')
-    new_filename = "_".join(new_filename[:-1])
-
-    for fn in filename:
-        num = os.path.splitext(fn.split("_")[-1])[0]
-        new_filename += '_' + num
-
-    return new_filename
-
-
-def generatePklFilename(filename):
-    if type(filename) is list:
-        filename = generateFilenameFromList(filename)
-
-    else:
-        filename = os.path.basename(os.path.splitext(filename)[0])
-
-    filename = 'RegistrosDP_PP/' + filename
-    return filename
+        PyLeech.Utils.burstUtils.plotDataPredictionAndResult(time, to_peel_data, pred)

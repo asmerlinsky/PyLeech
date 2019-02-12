@@ -4,6 +4,8 @@ Created on Fri Jun 22 19:57:03 2018
 
 @author: Agustin Sanchez Merlinsky
 """
+import os
+
 import neo
 import numpy as np
 
@@ -53,3 +55,14 @@ def getChannelNoByName(ch_name, obj):
 
 def generateTimeVector(datalen, sampling_rate):
     return np.linspace(2e-4, datalen / int(sampling_rate), datalen)
+
+
+def getAbfFilenamesfrompklFilename(pkl_filename):
+    no_ext_filename = os.path.splitext(os.path.basename(pkl_filename))[0]
+    end_name = no_ext_filename.split('_')[3:]
+    base_name = no_ext_filename[:10]
+    base_path = no_ext_filename[2:10].replace('_', '-')
+    file_list = []
+    for element in end_name:
+        file_list.append(base_path + '/' + base_name + '_' + element + '.abf')
+    return file_list

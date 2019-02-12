@@ -10,25 +10,30 @@ import os
 import sys
 import json
 from sklearn import linear_model
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler
+import PyLeech.Utils.spikeUtils as sU
+if 'ipython' not in inspect.stack()[0][1]:
 
-file_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-wdir = os.path.dirname(file_dir)
-os.chdir(wdir)
-sys.path.append(wdir)
-sys.path.append(file_dir)
+    file_dir = os.path.dirname(inspect.stack()[0][1])
+    wdir = os.path.dirname(file_dir)
+    os.chdir(wdir)
+    sys.path.append(wdir)
+    sys.path.append(file_dir)
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
-def getReversion(json_file, plot_results=True, show_data_points=False, baseline_range=[-100, -40], invert_axis=False):
+
+def getReversion(json_file, show_data_points=False, baseline_range=[-100, -40], invert_axis=False):
     full_file_results = json.load(open(json_file))
     baseline_bins = np.arange(baseline_range[0], baseline_range[1], 5)
-    binned_results = {}
-    ipsp_rev = []
-    regression_error = []
+    neuron_results = []
+    # ipsp_rev = []
+    # regression_error = []
+    fit_results = []
     for neuron, burst_dict in full_file_results.items():
         mean_ipsp = []
         baseline = []
@@ -37,6 +42,7 @@ def getReversion(json_file, plot_results=True, show_data_points=False, baseline_
             mean_ipsp.append(burst_info['T data']['mean Ipsp'])
             baseline.append(burst_info['T data']['baseline'])
             freqs.append(burst_info['burst data']['freq'])
+            neuron_results.append([neuron, burst_info['T data']['baseline'], burst_info['T data']['mean Ipsp']])
 
         bin_results = sU.binXYLists(baseline_bins, baseline, mean_ipsp)
         xerror = np.abs(baseline_bins[1] - baseline_bins[0]) / 2
@@ -75,8 +81,10 @@ def getReversion(json_file, plot_results=True, show_data_points=False, baseline_
             err = np.sqrt(mean_squared_error(np.asarray(mean_ipsp).reshape(-1, 1), full_predict))
             print('neuron %s : Erev = %.1f, reg error = %.1f' % (neuron, predicted_E_rev, err))
 
-        regression_error.append(err)
-        ipsp_rev.append(predicted_E_rev)
+
+        fit_results.append([neuron, predicted_E_rev, err ])
+        # regression_error.append(err)
+        # ipsp_rev.append(predicted_E_rev)
 
         plt.figure(1)
 
@@ -111,14 +119,20 @@ def getReversion(json_file, plot_results=True, show_data_points=False, baseline_
     plt.xlabel('Baseline (mV)')
     plt.ylabel('T Ipsp ($\Delta$ mV)', rotation=0, labelpad=50)
     plt.tight_layout()
-    return ipsp_rev, regression_error
-
+    # return ipsp_rev, regression_error, neuron_results
+    return fit_results, neuron_results
 
 ####################3    
 if __name__ == '__main__':
-    E_rev, error = getReversion('results_by_neuron.json', show_data_points=True, baseline_range=[-115, -40],
+    fit_results, neuron_results = getReversion('results_by_neuron.json', show_data_points=True, baseline_range=[-115, -40],
                                 invert_axis=False)
-    print('mean E_rev = (%.1f +- %.1f) mV ' % (np.mean(E_rev), np.std(E_rev)))
+    # print('mean E_rev = (%.1f +- %.1f) mV ' % (np.mean(E_rev), np.std(E_rev)))
     # plt.scatter(np.mean(E_rev), 0, marker='X', label='E_rev', s=100, color='k', zorder=100)
     # plt.errorbar(np.mean(E_rev), 0, xerr=(np.std(E_rev)/2), fmt='|', color='k')
     # plt.legend()
+
+    df = pd.DataFrame(neuron_results, columns=['neuron', 'baseline', 'ipsp'])
+    df.to_csv('T_Erev_results.csv')
+    df = pd.DataFrame(fit_results, columns=['neuron', 'Erev', 'error'])
+    df.to_csv('Fit_resaults.csv')
+

@@ -20,7 +20,7 @@ def getArraysFromAbfFiles(file_list, channels=['IN5', 'IN6', 'Vm1', 'Vm2'], prin
     array_dict = {}
     for channel in channels:
         array_dict[channel] = np.array([])
-
+    assert len(file_list)>0, 'filename list is empty'
     for filename in file_list:
         block = ExtendedAxonRawIo(filename)
         ch_info = block.ch_info
@@ -84,4 +84,9 @@ class ExtendedAxonRawIo(neo.rawio.AxonRawIO):
 
     def getSignal_single_segment(self, channel):
         ch_data = self.rescale_signal_raw_to_float(self.get_analogsignal_chunk(0, 0))
-        return ch_data[:, self.ch_info[channel]['index']]
+        try:
+            return ch_data[:, self.ch_info[channel]['index']]
+        except KeyError:
+            ch_info_list = [str(self.ch_info[key]) for key in list(self.ch_info)]
+            ch_info_string = "\n".join(ch_info_list)
+            raise KeyError("channel %s doesn't exists, check ch_info: \n%s" % (channel, ch_info_string))

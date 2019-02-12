@@ -4,6 +4,8 @@ Created on Wed Oct 10 13:40:50 2018
 
 @author: Agustin
 """
+import PyLeech.Utils.SpSorter
+import PyLeech.Utils.burstUtils
 
 """
 Primera parte
@@ -13,18 +15,12 @@ Primera parte
 %aimport PyLeech.spsortUtils
 %aimport PyLeech.filterUtils
 """
-from importlib import reload
 
-import PyLeech.AbfExtension as abfe
+import PyLeech.Utils.AbfExtension as abfe
 import numpy as np
 import matplotlib.pylab as plt
-import PyLeech.sorting_with_python as swp
-import PyLeech.spsortUtils
-from sklearn.cluster import KMeans
-import multiprocessing
-import PyLeech.constants as constants
+import PyLeech.Utils.constants as constants
 import PyLeech.filterUtils
-import PyLeech.burstUtils as BurstUtils
 
 nan = constants.nan
 opp0 = constants.opp0
@@ -71,7 +67,7 @@ del n1, n2, n1_filt, n2_filt
 train_time = time
 
 
-sorter = PyLeech.spsortUtils.SpSorter(train_data, train_time, fs)
+sorter = PyLeech.Utils.SpSorter.SpSorter(train_data, None, train_time, fs)
 del train_data, train_time
 
 # sorter.plotDataList()
@@ -169,13 +165,36 @@ sorter.plotCompleteDetection(round='All', legend=True, lw=0.1)
 
 
 sorter.plotCompleteDetection(clust_list=[19], lw=0.1)
-good_colors = BurstUtils.setGoodColors(list(sorter.final_spike_dict.keys()))
-spike_freqs = BurstUtils.getInstFreq(sorter.time, sorter.final_spike_dict, sorter.sample_freq)
+good_colors = PyLeech.Utils.burstUtils.setGoodColors(list(sorter.final_spike_dict.keys()))
+spike_freqs = PyLeech.Utils.burstUtils.getInstFreq(sorter.time, sorter.final_spike_dict, sorter.sample_freq)
 
-BurstUtils.plotFreq(spike_freqs, good_colors, sorter.template_dict, thres=[1, 300], single_figure=True)
+PyLeech.Utils.burstUtils.plotFreq(spike_freqs, good_colors, sorter.template_dict, thres=[1, 300], single_figure=True)
 
-freq_bins = BurstUtils.binSpikes(spike_freqs, sorter.time[-1], 0.1)
+freq_bins = PyLeech.Utils.burstUtils.binSpikesFreqs(spike_freqs, sorter.time[-1], 0.1)
 
-BurstUtils.plotFreq(freq_bins, good_colors, sorter.template_dict, thres=[1, 100], single_figure=False)
+PyLeech.Utils.burstUtils.plotFreq(freq_bins, good_colors, sorter.template_dict, thres=[1, 100], single_figure=False)
 
 sorter.plotCompleteDetection(round='All', legend=True, lw=0.1)
+
+
+
+from scipy.stats.mstats import mquantiles
+plt.figure()
+dataQ = map(lambda x:
+            mquantiles(diff, prob=np.arange(0.01,0.99,0.001)),data)
+dataQsd = map(lambda diff:
+              mquantiles(diff/np.std(diff), prob=np.arange(0.01,0.99,0.001)),
+              data)
+from scipy.stats import norm
+qq = norm.ppf(np.arange(0.01,0.99,0.001))
+plt.plot(np.linspace(-3,3,num=100),np.linspace(-3,3,num=100),
+         color='grey')
+colors = ['black', 'orange', 'blue', 'red']
+for i,y in enumerate(dataQ):
+    plt.plot(qq,y,color=colors[i])
+
+for i,y in enumerate(dataQsd):
+    plt.plot(qq,y,color=colors[i],linestyle="dashed")
+
+plt.xlabel('Normal quantiles')
+plt.ylabel('Empirical quantiles')
