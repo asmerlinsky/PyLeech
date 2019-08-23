@@ -12,11 +12,13 @@ from numpy.linalg import svd
 from pandas.plotting import scatter_matrix
 from scipy.signal import fftconvolve
 from sklearn.cluster import KMeans
-
+from sklearn.mixture import GaussianMixture
 import PyLeech.Utils.burstUtils
 from PyLeech.Utils import templateDictUtils as tdictUtils, sorting_with_python as swp
 from PyLeech.Utils.spsortUtils import good_evts_fct, proc_num, generatePklFilename, beep, nan, opp0, getGoodClusters, \
     generateClustersTemplate, getTemplateDictSubset
+import seaborn as sns
+import warnings
 
 # noinspection PyPep8,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit,PyAttributeOutsideInit
 class SpSorter:
@@ -43,7 +45,7 @@ class SpSorter:
 
     attrs_list = ['filename', 'folder', 'time', 'traces', 'sample_freq', 'state', 'peaks_idxs', 'evts', 'evt_interval',
                   'ch_no', 'evt_length', 'evts_median', 'evts_mad', 'evts_max', 'original_good_evts',
-                  'good_evts', 'good_evts_idxs', 'unitary', 'original_clusters', 'km', 'train_clusters',
+                  'good_evts', 'good_evts_idxs', 'unitary', 'original_clusters', 'model', 'train_clusters',
                   'cluster_color',
                   'good_colors', 'template_dict', 'rounds', 'final_spike_dict']
 
@@ -59,10 +61,6 @@ class SpSorter:
                 pass
 
         else:
-            assert data is not None, "No trace data was given"
-            assert time_vect is not None, "No time vector was given"
-            assert fs is not None, "No sample frequency was given"
-
             self.filename = filename
             self.traces = data
             self.ch_no = len(data)
@@ -105,7 +103,11 @@ class SpSorter:
         peak_detection_data[peak_detection_data < threshold] = 0
 
         self.peaks_idxs = swp.peak(peak_detection_data.sum(0), minimal_dist=min_dist)
-
+        print("found %i spikes" % self.peaks_idxs.shape[0])
+        try:
+            del self.random_idxs
+        except AttributeError:
+            pass
         return self.peaks_idxs
 
     def smoothAndGetPeaks(self, vect_len=5, threshold=5, min_dist=50):
@@ -159,6 +161,11 @@ class SpSorter:
         self.evts_mad = np.apply_along_axis(swp.mad, 0, self.evts)
         self.evts_max = self.evts[:, before + 1]
 
+        try:
+            self.good_evts
+        except:
+            self.good_evts = np.ones(self.evts.shape[0], dtype=bool)
+
         return self.evts
 
     def makeNoiseEvents(self, safety_factor=2.5, size=2000):
@@ -166,15 +173,18 @@ class SpSorter:
                                        safety_factor=safety_factor, size=size)
 
     def getGoodEvents(self, threshold=3):
-        self.good_evt_thres = threshold
-        self.good_evts = good_evts_fct(self.evts, threshold)
-        print("Found %i out of %i events" % (len(self.evts[self.good_evts]), len(self.evts)))
+        """
+        DEPRECATED
+        """
+        self.good_evts = np.ones(self.evts.shape[0], dtype=bool)
+        return self.good_evts
 
-    def takeSubSetEvents(self, pct=0.1):
+    def takeSubSetEvents(self, keep_pct=0.1):
         idxs = np.where(self.good_evts)[0]
-        np.random.shuffle(idxs)
-        idxs = idxs[int(pct * len(idxs)):]
 
+        np.random.shuffle(idxs)
+        idxs = idxs[int(keep_pct * len(idxs)):]
+        self.random_idxs = idxs
         self.good_evts[idxs] = False
         print("Kept %i spikes" % sum(self.good_evts))
         self.shuffle_good_idxs = np.where(self.good_evts)[0]
@@ -183,14 +193,12 @@ class SpSorter:
     def getUniqueClusters(self):
         return np.unique(self.train_clusters)
 
-    def KMeansClusterEvents(self, clust_no, use_pca=False, dim_size=0, n_init=1000, max_iter=400, verbose=0,
+    def GmmClusterEvents(self, clust_no, use_pca=False, dim_size=0, n_init=100, max_iter=400, verbose=0,
                             n_jobs=None, save=False):
         if n_jobs is None:
             n_jobs = (proc_num - 2)
 
-        self.km = KMeans(n_clusters=clust_no, init='k-means++', verbose=verbose, n_init=n_init, max_iter=max_iter,
-                         precompute_distances=True,
-                         copy_x=True, n_jobs=n_jobs)
+        self.model = GaussianMixture(n_components=clust_no, verbose=verbose, n_init=n_init, max_iter=max_iter)
 
         try:
             isfile = os.path.isfile(generatePklFilename(self.filename, self.folder))
@@ -211,12 +219,80 @@ class SpSorter:
 
         start = time.time()
         if not use_pca:
-            cluster = self.km.fit_predict(evts[self.good_evts].reshape(-1, 1))
+            cluster = self.model.fit_predict(evts[self.good_evts].reshape(-1, 1))
         else:
             if dim_size == 0:
                 print('Setting dimension size to 10')
                 dim_size = 10
-            cluster = self.km.fit_predict(np.dot(evts[self.good_evts, :], self.unitary[:, 0:dim_size]))
+            cluster = self.model.fit_predict(np.dot(evts[self.good_evts, :], self.unitary[:, 0:dim_size]))
+        self.km_dim_size = dim_size
+        end = time.time()
+        l = []
+        for i in range(clust_no):
+            if sum(cluster == i) > 0:
+                l.append((i, np.apply_along_axis(np.median, 0, self.evts[self.good_evts, :][cluster == i, :])))
+        cluster_median = list(l)
+
+        cluster_size = list([np.sum(np.abs(x[1])) for x in cluster_median])
+        new_order = list(reversed(np.argsort(cluster_size)))
+        new_order_reverse = sorted(range(len(new_order)), key=new_order.__getitem__)
+        self.train_clusters = np.array([new_order_reverse[i] for i in cluster])
+        self.original_clusters = deepcopy(self.train_clusters)
+
+        self.state = 'Postclustering'
+        print(
+            'Clustering took %i seconds with these settings:\ndim_size = %i,\nevt number = %i,\nn_init = %i,\nmax_iter = %i, ' % (
+                int(end - start), dim_size, sum(self.good_evts), n_init, max_iter))
+        beep()
+        if save:
+            try:
+                self.saveResults()
+            except Exception as e:
+                print("Couldn\'t save object due to following error:")
+                print(e)
+                pass
+        else:
+            print("Not saving results")
+
+
+        return self.train_clusters
+
+
+
+    def KMeansClusterEvents(self, clust_no, use_pca=False, dim_size=0, n_init=1000, max_iter=400, verbose=0,
+                            n_jobs=None, save=False):
+        if n_jobs is None:
+            n_jobs = (proc_num - 2)
+
+        self.model = KMeans(n_clusters=clust_no, init='k-means++', verbose=verbose, n_init=n_init, max_iter=max_iter,
+                            precompute_distances=True,
+                            copy_x=True, n_jobs=n_jobs)
+
+        try:
+            isfile = os.path.isfile(generatePklFilename(self.filename, self.folder))
+        except:
+            isfile = os.path.isfile(generatePklFilename(self.filename))
+
+        if save and isfile:
+            print('Warning, this will overwrite current pkl')
+            ipt = input('enter any key if you want to exit')
+            ipt = str(ipt)
+            if len(ipt) > 0:
+                print('exiting method')
+                return
+
+        print('Running')
+
+        evts = self.evts
+
+        start = time.time()
+        if not use_pca:
+            cluster = self.model.fit_predict(evts[self.good_evts].reshape(-1, 1))
+        else:
+            if dim_size == 0:
+                print('Setting dimension size to 10')
+                dim_size = 10
+            cluster = self.model.fit_predict(np.dot(evts[self.good_evts, :], self.unitary[:, 0:dim_size]))
         self.km_dim_size = dim_size
         end = time.time()
         l = []
@@ -248,18 +324,21 @@ class SpSorter:
         return self.train_clusters
 
     def getKMeansFullPrediction(self):
-        self.full_cluster = self.km.predict(np.dot(self.evts, self.unitary[:, 0:self.km_dim_size]))
+        self.full_cluster = self.model.predict(np.dot(self.evts, self.unitary[:, 0:self.km_dim_size]))
 
-    def subdivideClusters(self, cluster, clust_no, dim_size=0, n_init=1000, max_iter=400):
-        km = KMeans(n_clusters=clust_no, init='k-means++', n_init=n_init, max_iter=max_iter, precompute_distances=True,
-                    copy_x=True, n_jobs=(proc_num - 2))
+    def subdivideClusters(self, cluster, clust_no, dim_size=0, n_init=1000, max_iter=400, kmeans=False, verbose=0):
+        if kmeans:
+            model = KMeans(n_clusters=clust_no, init='k-means++', n_init=n_init, max_iter=max_iter, precompute_distances=True,
+                        copy_x=True, n_jobs=(proc_num - 2))
+        else:
+            model = GaussianMixture(n_components=clust_no, verbose=verbose, n_init=n_init, max_iter=max_iter)
 
         evts = self.evts[self.good_evts, :][self.train_clusters == cluster]
         if dim_size == 0:
             print('Setting dimension size to 10')
             dim_size = 10
 
-        sub_clusters = km.fit_predict(np.dot(evts, self.unitary[:, 0:dim_size]))
+        sub_clusters = model.fit_predict(np.dot(evts, self.unitary[:, 0:dim_size]))
 
         unique_clusters = np.abs(np.unique(self.train_clusters))
         max_cluster = np.max(unique_clusters[(unique_clusters != nan) & (unique_clusters != opp0)])
@@ -282,7 +361,7 @@ class SpSorter:
 
             try:
                 del self.template_dict[bad_clust]
-            except KeyError:
+            except (KeyError, AttributeError):
                 pass
 
         elif type(bad_clust) is list:
@@ -293,7 +372,7 @@ class SpSorter:
                     self.train_clusters[self.train_clusters == cl] = -cl
                 try:
                     del self.template_dict[cl]
-                except KeyError:
+                except (KeyError, AttributeError):
                     pass
 
         elif bad_clust is None:
@@ -352,7 +431,7 @@ class SpSorter:
                 self.template_dict.update({cl: {'median': median, 'mad': mad}})
         self.assignChannelsToClusters()
 
-    def hideBadEvents(self, pct=0.1, clust_list=None):
+    def hideBadEvents(self, max_pct_to_remove=.1, pct_from_norm=.1, clust_list=None):
         self.generateClustersTemplate()
 
         if clust_list is None:
@@ -363,18 +442,21 @@ class SpSorter:
                 clust_evts = self.evts[self.good_evts, :][self.train_clusters == cl, :]
 
                 clust_evts -= self.template_dict[cl]['median']
-                evts_norm = np.sqrt(np.diag(np.dot(clust_evts, clust_evts.T)))
+                dist_to_median = np.sqrt((clust_evts * clust_evts).sum(axis=1))
+
                 clust_norm = np.sqrt(np.dot(self.template_dict[cl]['mad'], self.template_dict[cl]['mad']))
 
-                if len(evts_norm[evts_norm > clust_norm]) < pct * len(evts_norm):
-                    self.train_clusters[self.train_clusters == cl][evts_norm > clust_norm] = -cl
+                if (dist_to_median > pct_from_norm * clust_norm).sum() < (max_pct_to_remove * clust_evts.shape[0]):
+                    self.train_clusters[self.train_clusters == cl][dist_to_median > clust_norm] = -cl
                 else:
-                    n_remove = int(pct * len(evts_norm))
+                    n_remove = int(max_pct_to_remove * clust_evts.shape[0])
 
                     ind1 = np.where(self.train_clusters == cl)[0]
-                    inds = ind1[np.argpartition(evts_norm, -n_remove)[-n_remove:]]
-
-                    self.train_clusters[inds] = -cl
+                    inds = ind1[np.argpartition(dist_to_median, -n_remove)[-n_remove:]]
+                    if cl != 0:
+                        self.train_clusters[inds] = -cl
+                    else:
+                        self.train_clusters[inds] = opp0
 
     def restoreClusters(self, clust_list=None):
         if clust_list is None:
@@ -473,6 +555,16 @@ class SpSorter:
                                 )
         beep()
 
+    def plotCenterDict(self, clust_list=None):
+        if clust_list is None:
+            clust_list = list(self.centers)
+        colors = PyLeech.Utils.burstUtils.setGoodColors(clust_list)
+
+        fig, ax = plt.subplots()
+        for cl in clust_list:
+            ax.plot(self.centers[cl]['center'], color=colors[cl], label=str(cl))
+        fig.legend()
+
     def generatePrediction(self, before, after, store_prediction=True, peak_idxs=None):
         self.before = before
         self.after = after
@@ -513,8 +605,8 @@ class SpSorter:
                                                                   'same'),
                                                       1, np.array(self.peel[-1]))
 
-            peak_detection_data = (peak_detection_data.transpose() / np.apply_along_axis(swp.mad, 1,
-                                                                                         peak_detection_data)).transpose()
+            # peak_detection_data = (peak_detection_data.transpose() / np.apply_along_axis(swp.mad, 1,
+            #                                                                              peak_detection_data)).transpose()
 
             peak_detection_data[peak_detection_data < threshold] = 0
             if not store_mid_steps:
@@ -534,12 +626,23 @@ class SpSorter:
     def getSortedTemplateDifference(self, clust_list=None):
 
         if clust_list is None:
-            clust_list = list(self.final_spike_dict)
+            clusts = np.unique(self.train_clusters)
+            clust_list = clusts[(clusts >= 0) & (clusts != opp0) & (clusts != nan)]
+
 
         template_dict_subset = getTemplateDictSubset(clust_list, self.template_dict)
 
         self.template_dict_comparer = tdictUtils.TemplateComparer(template_dict_subset)
-        return self.template_dict_comparer.getSortedTemplateDifference(clust_list=clust_list)
+        dist, sim_templates = self.template_dict_comparer.getSortedTemplateDifference(clust_list=clust_list)
+        return np.array(dist), np.array(sim_templates)
+
+
+    def getClosestsTemplates(self, pair_no=5):
+
+        dist, template_pairs = self.getSortedTemplateDifference(list(self.template_dict))
+        return template_pairs[:pair_no]
+
+
 
     def getSimilarTemplates(self, cluster_no):
 
@@ -547,7 +650,7 @@ class SpSorter:
             return self.template_dict_comparer.getSimilarTemplates(cluster_no)
         except AttributeError:
             self.getSortedTemplateDifference()
-            self.template_dict_comparer.getSimilarTemplates(cluster_no)
+            return self.template_dict_comparer.getSimilarTemplates(cluster_no)
 
     def mergeRoundsResults(self):
         round_list = [item for sublist in self.rounds for item in sublist]
@@ -620,11 +723,21 @@ class SpSorter:
     ####################################################################### Plot methods ##############################
 
     def viewPcaClusters(self, ggobi=False, go_pandas=False, clust_dim=8, ggobi_clusters=False, clust_list=None,
-                        good_clusters=False):
+                        good_clusters=False, marker_size=20, use_hue=False):
+
+        if use_hue:
+            clusts = np.unique(self.train_clusters)
+        else:
+            clusts=None
+
+
         if good_clusters:
-            clust_list = self.train_clusters[
-                (np.unique(self.train_clusters) > 0) & (np.unique(self.train_clusters) != nan), (
-                        np.unique(self.train_clusters) != opp0)]
+            clust_list = clusts[np.where(
+                (clusts > 0) & (clusts != nan) & (
+                        clusts != opp0))
+            ]
+        elif not clust_list:
+            clust_list = clusts
         # idxs = list(range(clust_dim))
         if clust_list is not None and len(clust_list) > 0:
             ggobi_clusters = True
@@ -638,12 +751,12 @@ class SpSorter:
         if ggobi:
 
             if not ggobi_clusters:
-                fn = r'PyLeech\csvs\evtsE.csv'
-                f = open(fn, 'w')
+                fn = 'csvs/evtsE.csv'
+                f = open(fn, 'w+')
                 w = csv.writer(f)
                 w.writerows(np.dot(self.evts[self.good_evts, :], self.unitary[:, 0:clust_dim]))
             else:
-                fn = r'PyLeech\csvs\evtsEclust.csv'
+                fn = 'csvs/evtsEclust.csv'
                 f = open(fn, 'w')
                 w = csv.writer(f)
                 w.writerows(np.concatenate((np.dot(evts[self.good_evts, :][mask, :], self.unitary[:, 0:clust_dim]),
@@ -652,11 +765,37 @@ class SpSorter:
 
             f.close()
             proc = Popen(['ggobi.exe', fn])
+
         if go_pandas:
+            plot_kws = {"s": marker_size}
             evts_matrix = np.dot(evts[self.good_evts, :][mask, :], self.unitary[:, :clust_dim])
-            df = pd.DataFrame(evts_matrix)
-            scatter_matrix(df, alpha=0.2, s=4, c='k', figsize=(6, 6),
-                           diagonal='kde', marker=".")
+            columns = list(range(clust_dim))
+            if use_hue:
+                try:
+                    # print(evts_matrix.shape, np.array([self.train_clusters[np.in1d(self.train_clusters, clust_list)]]).T.shape)
+                    evts_matrix = np.hstack((evts_matrix, np.array([
+                        self.train_clusters[np.in1d(self.train_clusters, clust_list)]]).T
+                                             )
+                                            )
+                    columns += ['cluster']
+                    hue = 'cluster'
+                except AttributeError:
+                    warnings.warn("Warning: no cluster found for hue")
+                    hue = None
+
+            else:
+                hue = None
+
+            df = pd.DataFrame(evts_matrix, columns=columns)
+            if clust_list is not None and 'cluster' in df.columns:
+                df = df[df['cluster'].isin(clust_list)]
+            if hue is not None:
+
+                sns.pairplot(df, hue=hue, vars=df.columns[:-1], plot_kws=plot_kws)
+            else:
+                sns.pairplot(df, hue=hue, diag_kind='kde', plot_kws=plot_kws)
+            # scatter_matrix(df, alpha=0.2, s=4, c='k', figsize=(6, 6),
+            #                diagonal='kde', marker=".")
 
     def plotClusters(self, clusts=None, y_lim=None, good_ones=True, add_unclustedred_evts=False, superposed=False):
 
@@ -715,8 +854,12 @@ class SpSorter:
 
         if clust_list is None:
             clust_list = []
+        if not clust_list:
+            colors = PyLeech.Utils.burstUtils.setGoodColors(np.unique(self.train_clusters))
+        else:
+            colors = PyLeech.Utils.burstUtils.setGoodColors(clust_list)
 
-        colors = PyLeech.Utils.burstUtils.setGoodColors(np.unique(self.train_clusters))
+
         iter_clusts = np.unique(self.train_clusters)
 
         plt.figure()
@@ -786,13 +929,13 @@ class SpSorter:
                               hide_clust_list=None,
                               intracel_signal=None):
         self.setRoundColors()
-        self.assignChannelsToClusters()
-        if interval is None:
-            interval = [0, len(self.time)]
 
-        else:
-            interval[0] = int(interval[0] * len(self.time))
-            interval[1] = int(interval[1] * len(self.time))
+        # if interval is None:
+        #     interval = [0, len(self.time)]
+        #
+        # else:
+        #     interval[0] = int(interval[0] * len(self.time))
+        #     interval[1] = int(interval[1] * len(self.time))
 
         if type(rounds) is str:
             spike_dict = self.final_spike_dict
@@ -886,7 +1029,7 @@ class SpSorter:
         plt.yticks([])
         plt.xlabel("Time (s)")
 
-    def plotDataListAndDetection(self, good_evts=False):
+    def plotDataListAndDetection(self, good_evts=False, linewidth=0.2):
 
         if good_evts:
             peaks = self.peaks_idxs[self.good_evts]
@@ -894,7 +1037,7 @@ class SpSorter:
             peaks = self.peaks_idxs
 
         plt.figure()
-        swp.plot_data_list_and_detection(self.traces, self.time, peaks)
+        swp.plot_data_list_and_detection(self.traces, self.time, peaks, linewidth=linewidth)
 
     def plotEventsMedians(self):
         plt.figure()

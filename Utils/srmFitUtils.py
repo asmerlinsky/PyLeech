@@ -5,6 +5,7 @@ Created on Mon Feb  4 23:29:39 2019
 @author: Agustin Sanchez Merlinsky
 """
 
+import os
 import numpy as np
 import PyLeech.Utils.srmSimUtils as srmSimUtils
 from PyLeech.Utils.burstUtils import is_outlier
@@ -12,6 +13,9 @@ from scipy import linalg as linalg, optimize as optimize
 import matplotlib.pyplot as plt
 import winsound
 import scipy.signal as spsig
+import PyLeech.Utils.burstUtils as burstUtils
+import time
+import PyLeech.Utils.filterUtils as filterUtils
 
 
 def getSpikeTimesDict(spike_freq_dict, neuron_list, outlier_threshold=3.5):
@@ -214,8 +218,6 @@ def gradPenalizedNegLogLikelihood(fit_array, input_stim, spike_matrix, dt, scali
                                               scaling_length).sum(axis=1)
 
         for n in range(no_neurons):
-
-
             conn_grad_Neg_Log_Likelihood = spsig.correlate(padded_spike_matrix[n][::-1], spikes_minus_exp,
                                                            mode='valid')[1:]
 
@@ -278,24 +280,52 @@ def MATgradNegLogLikelihood(fit_array, input_mat, spike_matrix, dt, scaling_leng
     return gradNegLogLikelihood
 
 
+def runCrawlingFitter(time_delta, input_stim, spike_times_dict, k_duration, refnconn_duration, dim_red, filename,
+                      first_idx, last_idx, func_grad_list, fs, dt, penalty, low_pass_threshold):
+
+    input_stim = filterUtils.runButterFilter(input_stim, low_pass_threshold, butt_order=4, sampling_rate=fs)
+
+    step = int(fs * dt)
+
+    print("\n\ndt: %f, penalty: %f" % (dt, penalty))
+
+    re_time = np.arange(0, round(time_delta, 4), dt)
+    input_stim = input_stim[first_idx:last_idx - 1:step]
+
+    fitter = SRMFitter(re_time, input_stim, spike_times_dict=spike_times_dict, k_duration=k_duration,
+                       refnconn_duration=refnconn_duration, dim_red=dim_red, penalty=penalty,
+                       filename=filename)
+
+    if func_grad_list is None:
+        func_grad_list = [penalizedNegLogLikelihood, gradPenalizedNegLogLikelihood]
+
+    t_start = time.time()
+    fitter.minimizeNegLogLikelihood(10 ** 5, func_grad_list, verbose=False, talk=False)
+    timing = (time.time() - t_start) / 60
+    print(timing)
+
+    return fitter, timing, fitter.optimization.nit
+
+
 class SRMFitter:
     """
     K_filter_size includes u_rest - V
-    The fitter assumes no more one spike per bin (per neuron)
-    That is that dt should be shorter than the refractory tau
+    
     Changes must be made to NegLogLikelihood function if I wanted to change this
     ALso. the system has a single shared stimulus
     urest-V is included in k_filter as the first element
     spike_dict must be either neuron : list_of_spike_times or neuron : [list_of_spike_times, list_of_inst_freq]
     """
 
-    def __init__(self, time_steps, input_stim, spike_times_dict, k_duration, refnconn_duration, dim_red=5):
+    def __init__(self, time_steps, input_stim, spike_times_dict, k_duration, refnconn_duration, dim_red=5, penalty=0,
+                 filename=None):
+        self.filename = os.path.basename(filename)
         self.dt = time_steps[1] - time_steps[0]
         self.scaled_fit_size = dim_red
         self.fit_length = len(time_steps)
 
         self.no_neurons = len(spike_times_dict)
-
+        self.penalty_param = penalty
         self.time_steps = time_steps
         self.input_stim = input_stim
 
@@ -312,7 +342,7 @@ class SRMFitter:
             times = times[(times > 0) & (times < self.time_steps[-1])]
             # print(neuron, times)
             digitalization = np.digitize(times, self.time_steps + self.dt / 2)
-            print(digitalization.shape, np.unique(digitalization).shape)
+            #            print(digitalization.shape, np.unique(digitalization).shape)
             # assert uid.shape[0] == digitalization.shape[0], " I found more one spike per bin in neuron %i" % neuron
             bin_count = np.bincount(digitalization, minlength=len(self.time_steps))
             if bin_count.shape[0] > 0:
@@ -324,8 +354,12 @@ class SRMFitter:
         self.fit_array = np.zeros(filters_to_fit_size)
 
     def minimizeNegLogLikelihood(self, n_iter=100, func_jac_list=[NegLogLikelihood, gradNegLogLikelihood],
-                                 use_grad=True, verbose=False, penalty_param=0, talk=True):
+                                 use_grad=True, verbose=False, penalty_param=None, talk=True):
 
+        if penalty_param is None:
+            penalty_param = self.penalty_param
+        elif penalty_param != self.penalty_param:
+            print("Warning. the assigned penalty is not the same as the one in self.penalty")
         b0_bound = [(-np.inf, 0)]
         bounds = b0_bound + [(-np.inf, np.inf)] * int(self.fit_array.shape[0] / self.no_neurons - 1)
         bounds *= self.no_neurons
@@ -343,7 +377,8 @@ class SRMFitter:
                                               args=args,
                                               jac=jac,
                                               method='L-BFGS-B',
-                                              options={'maxiter': n_iter, 'gtol': 1e-6, 'maxfun': 10**5,'disp': verbose},
+                                              options={'maxiter': n_iter, 'gtol': 1e-6, 'maxfun': 10 ** 5,
+                                                       'disp': verbose},
                                               bounds=bounds)
         self.fit_array = self.optimization.x
         if not verbose:
@@ -352,13 +387,14 @@ class SRMFitter:
         if talk:
             beep()
 
-    def plotFitArray(self, separate_plots=False):
+    def plotFitArray(self, separate_plots=True):
 
         if separate_plots:
-            fig, ax = plt.subplots(self.no_neurons, 1)
+            fig, ax = plt.subplots(self.no_neurons, 1, sharex=True)
         else:
-            fig, ax = plt.subplots()
-
+            fig, ax = plt.subplots(sharex=True)
+        fig.suptitle(os.path.basename(self.filename).split('.')[0] + '\ndt: ' + str(self.dt) + ", penalty: " + str(
+            self.penalty_param))
         single_conn_len = int(self.refnconn_length / self.no_neurons)
         neuron_filters = np.split(self.fit_array, self.no_neurons)
         for i in range(len(neuron_filters)):
@@ -371,8 +407,11 @@ class SRMFitter:
                     ax[i].axvline(1 + self.k_length * self.scaled_fit_size + single_conn_len * self.scaled_fit_size * j,
                                   color='b')
                 ax[i].grid()
+                burstUtils.removeTicksFromAxis(ax[i], 'x')
 
-        if separate_plots: return
+        if separate_plots:
+            burstUtils.showTicksFromAxis(ax[-1], 'x')
+            return
 
         neuron_filters = np.concatenate(neuron_filters)
 

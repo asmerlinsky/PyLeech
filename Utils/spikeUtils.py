@@ -116,7 +116,7 @@ def getBaselineSideStd(signal, bins=50, spdist=100, side=0):
     return np.mean(no_spike_signal[indexes]), side, np.std(no_spike_signal[indexes])
 
 
-def binXYLists(bins, xvaluelist, yvaluelist, get_median=False, std_as_err=False):
+def binXYLists(bins, xvaluelist, yvaluelist, get_median=False, std_as_err=False, full_binning=False):
     np_xval = np.asarray(xvaluelist)
     np_yval = np.asarray(yvaluelist)
     bin_interval = np.abs(bins[1] - bins[0])
@@ -147,6 +147,11 @@ def binXYLists(bins, xvaluelist, yvaluelist, get_median=False, std_as_err=False)
             else:
 
                 std_as_err = np.std(np_yval[inbin])
-                rel_bin_max.append(std_as_err / 2)
-                rel_bin_min.append(std_as_err / 2)
+                rel_bin_max.append(std_as_err)
+                rel_bin_min.append(std_as_err)
+        elif full_binning:
+            filled_bins.append(center)
+            bin_mean.append(0)
+            rel_bin_max.append(0)
+            rel_bin_min.append(0)
     return filled_bins, bin_mean, rel_bin_min, rel_bin_max

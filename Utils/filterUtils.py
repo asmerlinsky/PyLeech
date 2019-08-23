@@ -9,8 +9,8 @@ import scipy.signal as spsig
 import numpy as np
 import matplotlib.pyplot as plt
 
-def getFreqSpectrum(data, samplefreq, nperseg=1000):
-    return spsig.welch(data, fs=samplefreq, nperseg=nperseg)
+def getFreqSpectrum(data, sampling_rate, nperseg=1000):
+    return spsig.welch(data, fs=sampling_rate, nperseg=nperseg)
 
 def getbutterPolinomials(cuttoff_freq, butt_order=8, sampling_rate=5000, btype='low'):
     assert  cuttoff_freq<(sampling_rate/2), "cutoff frequency must be < Nyquist frequency"

@@ -11,6 +11,7 @@ from PyLeech.Utils import spikeUtils as spikeUtils
 from PyLeech.Utils.constants import nan
 from copy import deepcopy
 
+
 def getInstFreq(time, spike_dict, fs):
     spike_freq_dict = {}
     for key, items in spike_dict.items():
@@ -18,15 +19,17 @@ def getInstFreq(time, spike_dict, fs):
 
     return spike_freq_dict
 
+
 def getSpikeTimesDict(spike_freq_dict):
     return {key: items[0] for key, items in spike_freq_dict.items()}
 
-def binSpikesFreqs(spike_freq_dict, time_length, step, full_binning=False):
+
+def binSpikesFreqs(spike_freq_dict, time_length, step, full_binning=False, use_median=False):
     rg = np.arange(0, time_length, step)
     binned_spike_freq_dict = {}
     for key, item in spike_freq_dict.items():
 
-        bins = spikeUtils.binXYLists(rg, item[0], item[1], get_median=True, std_as_err=True)
+        bins = spikeUtils.binXYLists(rg, item[0], item[1], get_median=use_median, std_as_err=True)
         if full_binning:
             freqs = np.zeros(len(rg))
             freqs[np.in1d(rg, bins[0])] = bins[1]
@@ -35,46 +38,91 @@ def binSpikesFreqs(spike_freq_dict, time_length, step, full_binning=False):
             binned_spike_freq_dict.update({key: [np.array(bins[0]), np.array(bins[1])]})
     return binned_spike_freq_dict
 
-def digitizeSpikeFreqs(spike_freq_dict, time_length, step, count=False, freq_threshold=150):
+
+def removeOutliers(spike_freq_dict, outlier_threshold=3.5):
+    no_outlier_sfd = {}
+    for key, items in spike_freq_dict.items():
+        outlier_mask = is_outlier(items[1], thresh=outlier_threshold)
+        no_outlier_sfd[key] = [items[0][~outlier_mask], items[1][~outlier_mask]]
+    return no_outlier_sfd
+
+
+def digitizeSpikeFreqs(spike_freq_dict, step, num, time_length=None, counting=False, freq_threshold=150):
+    if time_length is None:
+        time_length = max([items[1].max() for key, items in spike_freq_dict.items()])
     """ Always returns full binning
     If count is set to True, it will return spike count by bin.
     If false, it will return mean freq"""
-    rg = np.arange(0, time_length, step)
+
+    rg = np.linspace(0, time_length, num)
+    # print(rg.shape)
     binned_spike_freq_dict = {}
-    freqs = np.zeros(len(rg) - 1)
+    freqs = np.zeros(len(rg))
     for key, item in spike_freq_dict.items():
         freqs[:] = 0
         times = np.array(item[0])
         freqs_arr = np.array(item[1])
 
-        times = times[freqs_arr<freq_threshold]
-        freqs_arr = freqs_arr[freqs_arr<freq_threshold]
-        digitalization = np.digitize(times, rg)
+        times = times[freqs_arr < freq_threshold]
+        freqs_arr = freqs_arr[freqs_arr < freq_threshold]
+        digitalization = np.digitize(times, rg + step / 2)
 
         uid = np.unique(digitalization)
+        if not counting:
 
-        for i in uid:
-            if not count:
-                freqs[i] = np.mean(freqs_arr[np.where(digitalization==i)[0]])
-            else:
-                freqs[i] = np.where(digitalization == i)[0].size
-        binned_spike_freq_dict[key] = [rg[:-1], deepcopy(freqs)]
+            for i in uid:
+                # freqs[i] = 1 / np.mean(1 / freqs_arr[np.where(digitalization == i)[0]])
+                bin_idxs = np.where(digitalization == i)[0]
+                if bin_idxs.size>1:
+                    isi = np.mean(np.diff(times[bin_idxs]))
+                    freqs[i] = 1 / isi
+                elif bin_idxs.size == 1:
+                    freqs[i] = freqs_arr[bin_idxs[0]]
+                else:
+                    freqs[i] = 0
 
-    return binned_spike_freq_dict
+                if np.isnan(freqs[i]): print(freqs[i])
 
-def binSpikeFromISIs(spike_freq_dict, time_length, step, full_binning=False):
-    rg = np.arange(0, time_length, step)
-    binned_spike_freq_dict = {}
-    for key, item in spike_freq_dict.items():
 
-        bins = spikeUtils.binXYLists(rg, item[0][:-1], np.diff(item[0]), get_median=True, std_as_err=True)
-        if full_binning:
-            freqs = np.zeros(len(rg))
-            freqs[np.in1d(rg, bins[0])] = np.reciprocal(bins[1])
-            binned_spike_freq_dict.update({key: [rg, freqs]})
+
         else:
-            binned_spike_freq_dict.update({key: [np.array(bins[0]), np.reciprocal(bins[1])]})
+            freqs = np.bincount(digitalization, minlength=len(freqs))
+
+        binned_spike_freq_dict[key] = np.array([rg[:], deepcopy(freqs)])
+
     return binned_spike_freq_dict
+
+
+def getSpISIdictFromSpFreqdict(spike_freq_dict):
+    sISId = {key: [items[0], 1 / items[1]] for key, items in spike_freq_dict.items()}
+
+    return sISId
+
+
+def binSpikeISIdict(spike_ISI_dict, time_length, step, full_binning=False):
+    rg = np.arange(0, time_length, step)
+    binned_spike_ISI_dict = {}
+    for key, item in spike_ISI_dict.items():
+
+        bins = spikeUtils.binXYLists(rg, item[0], item[1], get_median=False, std_as_err=True)
+        if full_binning:
+            ISIs = np.zeros(len(rg))
+            ISIs[np.in1d(rg, bins[0])] = bins[1]
+            binned_spike_ISI_dict.update({key: [rg, ISIs]})
+        else:
+            binned_spike_ISI_dict.update({key: [np.array(bins[0]), np.array(bins[1])]})
+    return binned_spike_ISI_dict
+
+
+def getNonZeroIdxs(trace, threshold):
+    non_zero_idxs = np.where(trace > threshold)[0]
+    jumps = np.append([0], np.where(np.diff(non_zero_idxs) > 1)[0])
+    jumps = np.append(jumps, jumps + 1)
+    return np.sort(non_zero_idxs[jumps[1:-1]])
+
+# def getNonZeroIntervals(edge_idxs):
+
+
 
 
 def plotDataPredictionAndResult(time, data, pred):
@@ -124,8 +172,7 @@ def plot_data_list(data_list,
         fig, ax_list = plt.subplots(nb_chan, sharex=True)
     else:
         assert (fig is not None) or (ax_list is not None), "I need both a fig and its ax_list to work properly"
-    
-    
+
     if (type(ax_list) != np.ndarray) and (type(ax_list) != list): ax_list = [ax_list]
 
     for i in range(nb_chan):
@@ -210,9 +257,12 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
         keys = [key for key in list(spike_freq_dict) if (key in draw_list) and (key not in skip_list)]
         keys.sort()
         color_dict = setGoodColors(keys)
+    elif color_dict is 'single_color':
+        color_dict = {key: 'k' for key in spike_freq_dict.keys()}
 
     fig = plt.figure(figsize=(12, 6))
     fig.tight_layout()
+    ax_list = []
     i = 1
     if single_figure:
         j = 1
@@ -232,15 +282,19 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
 
             label = str(key)
             if template_dict is not None:
-                if len(template_dict[key]['channels']) == 1:
-                    if template_dict[key]['channels'][0] == -1:
-                        label += ': all'
+                try:
+
+                    if len(template_dict[key]['channels']) == 1:
+                        if template_dict[key]['channels'][0] == -1:
+                            label += ': all'
+                        else:
+                            label += ': ch ' + str(template_dict[key]['channels'][0])
                     else:
-                        label += ': ch ' + str(template_dict[key]['channels'][0])
-                else:
-                    label += ': chs:'
-                    for i in template_dict[key]['channels']:
-                        label += ' ' + str(i)
+                        label += ': chs:'
+                        for i in template_dict[key]['channels']:
+                            label += ' ' + str(i)
+                except:
+                    pass
 
             data0 = items[0][mask]
             data1 = items[1][mask]
@@ -266,7 +320,11 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
             ax.legend()
             if not single_figure:
                 i += 1
+            ax_list.append(ax)
+
     if optional_trace is not None:
+        if single_figure:
+            i += 1
         if sharex is not None:
             ax = plt.subplot(j, 1, i, sharex=sharex)
         elif i == 1:
@@ -274,27 +332,35 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
         else:
             ax = plt.subplot(j, 1, i, sharex=ax)
 
+
         ax.plot(optional_trace[0], optional_trace[1], color='k', lw=1)
+        ax_list.append(ax)
     ax.grid(linestyle='dotted')
     #    removeTicksFromAxis(ax, 'y')
     showTicksFromAxis(ax, 'x')
-    return fig
-
+    return fig, ax_list
 
 def removeTicksFromAxis(ax, axis='y'):
     axis = getattr(ax, axis + 'axis')
     for tic in axis.get_major_ticks():
-        tic.label1On = tic.label2On = False
-        tic.tick1On = tic.tick2On = False
+
+        tic.label1.set_visible(False)
+        tic.label2.set_visible(False)
+
+        tic.tick1line.set_visible(False)
+        tic.tick2line.set_visible(False)
+
+        # tic.label1On = tic.label2On = False
+        # tic.tick1On = tic.tick2On = False
 
 
 def showTicksFromAxis(ax, axis='y'):
     axis = getattr(ax, axis + 'axis')
     for tic in axis.get_major_ticks():
-        # tic.label1On = tic.label2On = True
-        # tic.tick1On = tic.tick2On = True
-        tic.label1On = True
-        tic.tick1On = True
+
+        tic.label1.set_visible(True)
+        tic.tick1line.set_visible(True)
+
 
 
 def saveSpikeResults(filename, json_dict):
@@ -306,8 +372,11 @@ def saveSpikeResults(filename, json_dict):
 
 def loadSpikeResults(filename):
     assert os.path.splitext(filename)[1] == '.pklspikes', 'Wrong file extension, I need a .pklspikes file'
+
     with open(filename, 'rb') as pfile:
         results = pickle.load(pfile)
+
+
     return results
 
 
@@ -452,7 +521,7 @@ def setGoodColors(good_clusters, num_col=10):
     return cluster_color
 
 
-def spike_freq_dictToArray(sfd):
+def spike_freq_dictToDataFrame(sfd):
     for key in sfd.keys():
         if type(sfd[key]) is list:
             Tsfd = np.array(sfd[key]).transpose()
@@ -474,6 +543,69 @@ def spike_freq_dictToArray(sfd):
         df[k] = df[k].astype(v)
 
     return df
+
+
+def binned_spike_freq_dict_ToArray(sfd, time_interval=None, good_neurons=None):
+    new_sfd = {}
+    first_key = list(sfd)[0]
+    if time_interval is not None:
+        if type(time_interval[0]) is list:
+            mask = np.zeros(len(sfd[first_key][0]), dtype=bool)
+
+            for interval in time_interval:
+                idxs = np.where((sfd[first_key][0] > interval[0]) & (sfd[first_key][0] < interval[1]))[0]
+                mask[idxs] = 1
+
+        else:
+            mask = (sfd[first_key][0] > time_interval[0]) & (sfd[first_key][0] < time_interval[1])
+    else:
+        mask = np.ones(sfd[first_key][0].shape[0], dtype=bool)
+
+    for key, items in sfd.items():
+        if good_neurons is None or key in good_neurons:
+            new_sfd[key] = np.array([items[0][mask], items[1][mask]])
+
+    return new_sfd
+
+
+def processSpikeFreqDict(spike_freq_dict, step, num=None, outlier_threshold=3.5, selected_neurons=None, time_length=None,
+                         time_interval=None, counting=False, freq_threshold=200):
+    """
+
+    :param spike_freq_dict:
+    :type dict:
+    :return: binned_freq_array
+    :rtype: dict
+    """
+    if num is None:
+        num = int(time_length/step)
+
+    new_sfd = removeOutliers(spike_freq_dict, outlier_threshold=outlier_threshold)
+    new_sfd = digitizeSpikeFreqs(new_sfd, step=step, num=num, time_length=time_length, counting=counting,
+                                 freq_threshold=freq_threshold)
+    return binned_spike_freq_dict_ToArray(new_sfd, time_interval=time_interval, good_neurons=selected_neurons)
+
+def generateBurstSegmentsFromManyNeurons(smoothed_sfd, intervals_dict):
+    burst_list = []
+    target_neuron = []
+    max_len = 0
+    for key, items in smoothed_sfd.items():
+        for i, j in intervals_dict[key]:
+            segment = items[1][i:j]
+            burst_list.append(segment)
+            if len(segment) > max_len:
+                max_len = len(segment)
+            target_neuron.append(key)
+
+    return np.array([spsig.resample(burst * len(burst)/max_len, max_len) for burst in burst_list]), np.array(target_neuron)
+
+def resampleSegmentList(segment_list):
+    max_len = 0
+    for segment in segment_list:
+        if len(segment) > max_len:
+            max_len = len(segment)
+
+    return np.array([spsig.resample(segment * segment.shape[0]/max_len, max_len) for segment in segment_list])
 
 
 def segment_listToDataFrame(segment_list):
@@ -522,7 +654,7 @@ def plotCompleteDetection(traces, time, spike_dict, template_dict, cluster_color
             nrows=(len(traces) + 1), ncols=1, sharex=True,
             gridspec_kw={'height_ratios': hr}
         )
-        
+
         plot_data_list(traces[:, interval[0]:interval[1]:step], time[interval[0]:interval[1]:step],
                        linewidth=lw, fig=fig, ax_list=ax_list)
     else:
@@ -545,7 +677,8 @@ def plotCompleteDetection(traces, time, spike_dict, template_dict, cluster_color
 
             plot_detection(traces,
                            time,
-                           spike_ind[(spike_ind > interval[0]) & (spike_ind < interval[1])] - interval[0],
+                           # spike_ind[(spike_ind > interval[0]) & (spike_ind < interval[1])]- interval[0],
+                           spike_ind[(spike_ind > interval[0]) & (spike_ind < interval[1])],
                            channels=channels,
                            peak_color=cluster_colors[key],
                            label=label,
@@ -619,15 +752,13 @@ def assertMissingData(needed_keys):
 def resampleArrayList(arr_list1, arr_list2):
     l1 = len(arr_list1[0])
     l2 = len(arr_list2[0])
-    resampled_arr_list1 = []
-    resampled_arr_list2 = []
 
-    if l1>l2:
+    if l1 > l2:
         resampled_arr_list2 = []
         resampled_arr_list1 = arr_list1
         for array in arr_list2:
             resampled_arr_list2.append(spsig.resample(array, l1))
-    elif l2>l1:
+    elif l2 > l1:
         resampled_arr_list2 = arr_list2
         resampled_arr_list1 = []
         for array in arr_list1:
@@ -636,4 +767,6 @@ def resampleArrayList(arr_list1, arr_list2):
         resampled_arr_list1 = arr_list1
         resampled_arr_list2 = arr_list2
 
-    return  resampled_arr_list1, resampled_arr_list2
+    return resampled_arr_list1, resampled_arr_list2
+
+

@@ -30,6 +30,10 @@ class TemplateComparer:
         return self.results[0], self.results[1]
 
     def getSimilarTemplates(self, clust_no):
+        pairs = []
+        dists = []
         for i in range(len(self.results[1])):
             if clust_no in self.results[1][i]:
-                print(self.results[1][i], self.results[0][i])
+                 pairs.append(self.results[1][i])
+                 dists.append(self.results[0][i])
+        return pairs, dists

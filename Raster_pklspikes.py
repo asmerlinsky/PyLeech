@@ -1,8 +1,9 @@
 import PyLeech.Utils.abfUtils as abfUtils
 import PyLeech.Utils.burstClasses as burstClasses
 import PyLeech.Utils.AbfExtension as abfe
+import PyLeech.Utils.burstStorerLoader
 import PyLeech.Utils.burstUtils as burstUtils
-import PyLeech.filterUtils as filterUtils
+import PyLeech.Utils.filterUtils as filterUtils
 import matplotlib.pyplot as plt
 import glob
 from importlib import reload
@@ -19,7 +20,7 @@ for j in range(len(pkl_files)): print(j, pkl_files[j])
 filename = pkl_files[7]
 print(filename)
 
-burst_object = burstClasses.BurstStorerLoader(filename, 'load')
+burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, 'load')
 basename = abfUtils.getAbfFilenamesfrompklFilename(filename)
 arr_dict, time, fs = abfe.getArraysFromAbfFiles(basename, ['Vm1'])
 NS = arr_dict['Vm1']
@@ -152,7 +153,7 @@ for filename in pkl_files:
     basename = PyLeech.Utils.abfUtils.getAbfFilenamesfrompklFilename(filename)
     arr_dict, time, fs = abfe.getArraysFromAbfFiles(basename, ['Vm1'])
     NS = arr_dict['Vm1']
-    burst_object = burstClasses.BurstStorerLoader(filename, 'load')
+    burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, 'load')
     # PyLeech.burstUtils1.plotCompleteDetection(burst_object.traces, burst_object.time, burst_object.spike_dict,
     #                                           burst_object.template_dict, burst_object.color_dict, legend=True)
     plt.suptitle(filename)
@@ -160,9 +161,8 @@ for filename in pkl_files:
 
     burstClasses.plotFreq(burst_object.spike_freq_dict, burst_object.color_dict, optional_trace=[time[::5], NS[::5]], template_dict=burst_object.template_dict, outlier_thres=10, sharex=None)
     correlation_segments = burstClasses.SegmentandCorrelate(burst_object.spike_freq_dict, NS, time,
-                                                            time_intervals=burst_object.crawling_segments,
-                                                            intracel_cutoff_freq=2,
-                                                            no_cycles=1, intracel_peak_height=-52)
+                                                            time_intervals=burst_object.crawling_segments, no_cycles=1,
+                                                            intracel_peak_height=-52)
     correlation_segments.
     # plt.figure()
 
@@ -178,7 +178,7 @@ for j in range(len(pkl_files)): print(j, pkl_files[j])
 filename = pkl_files[6]
 print(filename)
 
-burst_object = burstClasses.BurstStorerLoader(filename, 'load')
+burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, 'load')
 basename = abfUtils.getAbfFilenamesfrompklFilename(filename)
 arr_dict, time, fs = abfe.getArraysFromAbfFiles(basename, ['Vm1'])
 NS = arr_dict['Vm1']
