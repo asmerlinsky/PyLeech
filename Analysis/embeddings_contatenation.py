@@ -27,9 +27,6 @@ if __name__ == "__main__":
         spike_kernel_sigma = 1
 
 
-
-
-
         spike_freq_array = burstUtils.processSpikeFreqDict(burst_object.spike_freq_dict, .1, selected_neurons=[burst_object.isDe3],
                                                            time_length=burst_object.time[-1])
 

@@ -48,20 +48,27 @@ if __name__ == '__main__':
     del cdd["RegistrosDP_PP\\NS_T_DP_PP_0_cut.pklspikes"]
     del cdd["RegistrosDP_PP\\NS_T_DP_PP_1.pklspikes"]
     del cdd["RegistrosDP_PP\\2019_01_28_0001.pklspikes"]
+    del cdd['RegistrosDP_PP\\18n05010.pklspikes']
+    del cdd['RegistrosDP_PP\\14217000.pklspikes']
+    del cdd['RegistrosDP_PP\\cont10.pklspikes']
 
     for fn, data in cdd.items():
 
         try:
             ns_channel = [key for key, items in data['channels'].items() if 'NS' == items][0]
-            print("Running %s" % fn)
+            # print("Running %s" % fn)
         except IndexError:
-            continue
+            ns_channel = None
 
-        arr_dict, time_vector1, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1'])
 
-        NS_kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=1/fs)
-        conv_NS = spsig.fftconvolve(arr_dict[ns_channel], NS_kernel, mode='same')[::int(binning_dt * fs)]
+        if ns_channel is not None:
+            arr_dict, time_vector1, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1'])
+            NS_kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=1/fs)
+            conv_NS = spsig.fftconvolve(arr_dict[ns_channel], NS_kernel, mode='same')[::int(binning_dt * fs)]
+        else:
+            arr_dict, time_vector1, fs = abfe.getArraysFromAbfFiles(fn, ['IN5'])
         time_vector1 = time_vector1[::int(binning_dt * fs)]
+
         del arr_dict
 
         burst_object = BurstStorerLoader(fn, 'RegistrosDP_PP', 'load')
@@ -69,7 +76,7 @@ if __name__ == '__main__':
         good_neurons = [neuron for neuron, neuron_dict in data['neurons'].items() if neuron_dict['neuron_is_good']]
 
         spike_freq_array = burstUtils.processSpikeFreqDict(burst_object.spike_freq_dict, step=int(binning_dt * fs) / fs,
-                                                           num=conv_NS.shape[0],
+                                                           num=time_vector1.shape[0],
                                                            time_length=burst_object.time[-1])
 
 
@@ -79,13 +86,15 @@ if __name__ == '__main__':
         burst_array = []
 
         kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
-        burst_array.append(conv_NS)
+        if ns_channel is not None:
+            burst_array.append(conv_NS)
+
         for key, items in spike_freq_array.items():
             smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])
             burst_array.append(smoothed_sfd[key][1])
         burst_array = np.array(burst_array).T
         spike_idxs = NLD.getSpikeIdxs(smoothed_sfd, cdd[fn]["crawling_intervals"])
-        if data["DE3"] != -1 and data["DE3"] is not None:
+        if data["DE3"] != -1 and data["DE3"] is not None and ns_channel is not None:
             fig, ax = plt.subplots()
             tf = sc.fit_transform(np.array([conv_NS, smoothed_sfd[data["DE3"]][1]]).T)
             ax.scatter(tf[spike_idxs,0],tf[spike_idxs,1], c=cmap(np.repeat(np.linspace(0, 1, n_splits), np.ceil(spike_idxs.shape[0]/n_splits))[:spike_idxs.shape[0]]), s=15)
@@ -93,13 +102,12 @@ if __name__ == '__main__':
             ax.set_xlabel("NS")
             ax.set_ylabel("DE3")
 
-
-        fig, ax_list = burstUtils.plotFreq(smoothed_sfd, scatter_plot=False, color_dict='single_color', draw_list=good_neurons,
-                            optional_trace=[time_vector1, conv_NS])
-
-
-
-
+        if ns_channel is not None:
+            fig, ax_list = burstUtils.plotFreq(smoothed_sfd, scatter_plot=False, color_dict='single_color', draw_list=good_neurons,
+                                optional_trace=[time_vector1, conv_NS])
+        else:
+            fig, ax_list = burstUtils.plotFreq(smoothed_sfd, scatter_plot=False, color_dict='single_color',
+                                               draw_list=good_neurons)
 
         split_times = np.linspace(cdd[fn]["crawling_intervals"][0][0], cdd[fn]["crawling_intervals"][-1][-1], num=n_splits+1)
         boxes = [matplotlib.patches.Rectangle((split_times[i],-1000), split_times[i+1]-split_times[i], 2000) for i in range(n_splits)]
@@ -116,7 +124,8 @@ if __name__ == '__main__':
 
         spike_idxs = NLD.getSpikeIdxs(smoothed_sfd, cdd[fn]["crawling_intervals"])
 
-        ax.set_ylim((conv_NS[spike_idxs].min(), conv_NS[spike_idxs].max()))
+        if ns_channel is not None:
+            ax.set_ylim((conv_NS[spike_idxs].min(), conv_NS[spike_idxs].max()))
 
         save_name = "csvs/" + os.path.splitext(os.path.basename(fn))[0] + ".csv"
         # fig.savefig(save_name, dpi=600)

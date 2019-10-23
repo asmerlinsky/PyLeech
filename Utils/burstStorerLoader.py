@@ -46,6 +46,8 @@ class BurstStorerLoader():
 
         saveSpikeResults(filename, pkl_dict)
 
+
+
     def generatePklDict(self):
         pkl_dict = {}
         for key in BurstStorerLoader.required_to_save_dict_keys:

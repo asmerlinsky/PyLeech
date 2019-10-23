@@ -46,7 +46,7 @@ class SpSorter:
     attrs_list = ['filename', 'folder', 'time', 'traces', 'sample_freq', 'state', 'peaks_idxs', 'evts', 'evt_interval',
                   'ch_no', 'evt_length', 'evts_median', 'evts_mad', 'evts_max', 'original_good_evts',
                   'good_evts', 'good_evts_idxs', 'unitary', 'original_clusters', 'model', 'train_clusters',
-                  'cluster_color',
+                  'cluster_color', 'before', 'after'
                   'good_colors', 'template_dict', 'rounds', 'final_spike_dict']
 
     def __init__(self, filename, folder=None, data=None, time_vect=None, fs=None, verbose=False):
@@ -162,8 +162,9 @@ class SpSorter:
         self.evts_max = self.evts[:, before + 1]
 
         try:
-            self.good_evts
-        except:
+            if self.good_evts.shape[0] != self.evts.shape[0]:
+                self.good_evts = np.ones(self.evts.shape[0], dtype=bool)
+        except AttributeError:
             self.good_evts = np.ones(self.evts.shape[0], dtype=bool)
 
         return self.evts
@@ -458,6 +459,24 @@ class SpSorter:
                     else:
                         self.train_clusters[inds] = opp0
 
+    def realignMultiChannelEvents(self, clust_list, ch=0):
+        for cluster in clust_list:
+            center = int(self.evt_length/2 - 1)
+            arg_max = np.argmax(self.template_dict[cluster]['median'][self.evt_length * ch: self.evt_length * (ch + 1)])
+
+            shift = arg_max - center
+
+            self.peaks_idxs[self.train_clusters == cluster] += shift
+        try:
+            self.makeEvents(before=self.before, after=self.after)
+        except:
+            self.peaks_idxs[self.train_clusters == cluster] -= shift
+            raise
+        self.generateClustersTemplate()
+
+
+
+
     def restoreClusters(self, clust_list=None):
         if clust_list is None:
             self.train_clusters = deepcopy(self.original_clusters)
@@ -647,6 +666,7 @@ class SpSorter:
     def getSimilarTemplates(self, cluster_no):
 
         try:
+
             return self.template_dict_comparer.getSimilarTemplates(cluster_no)
         except AttributeError:
             self.getSortedTemplateDifference()
@@ -885,7 +905,7 @@ class SpSorter:
             plt.legend(loc='upper right')
 
     # noinspection PyUnboundLocalVariable
-    def plotTemplates(self, clust_list=None, new_figure=True):
+    def plotTemplates(self, clust_list=None, new_figure=True, skip_list=[]):
         if new_figure:
             fig = plt.figure()
 
@@ -901,7 +921,7 @@ class SpSorter:
         elif type(clust_list) is int:
             clust_list = [clust_list]
             colors = PyLeech.Utils.burstUtils.setGoodColors(clust_list)
-        elif (type(clust_list) is list) or (type(clust_list) is np.ndarray):
+        elif type(clust_list) in [list, np.ndarray, range]:
             colors = PyLeech.Utils.burstUtils.setGoodColors(clust_list)
         else:
             assert False, "clust_list must be either a list or an int"
@@ -909,7 +929,7 @@ class SpSorter:
 
 
         for key, item in self.template_dict.items():
-            if key in clust_list:
+            if key in clust_list and key not in skip_list:
                 plt.plot(item['median'], color=colors[key], label=key, lw=2)
 
         for i in np.arange(self.evt_interval[0], self.evt_length * self.ch_no, self.evt_length):

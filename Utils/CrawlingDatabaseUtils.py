@@ -156,6 +156,12 @@ def appendToDataDict(data_dict, filename=None):
 
     f.close()
 
+def plotSpikesFrompklspikes(filename):
+    burst_object = burstStorerLoader.BurstStorerLoader(filename, mode='load')
+    plt.close()
+    fig, ax = burstUtils.plotFreq(burst_object.spike_freq_dict, burst_object.color_dict, optional_trace=None,
+                                  template_dict=None, outlier_thres=3.5, ms=2)
+    fig.suptitle(filename)
 
 def generateSingleFileDataDict(filename, min_isi=0.005, max_isi=2, old_data_dict=None):
     if old_data_dict is None:
@@ -234,7 +240,7 @@ def generateSingleFileDataDict(filename, min_isi=0.005, max_isi=2, old_data_dict
             neuron_dict[str(key)] = {"ISI_mean": diff_mean, "ISI_std": diff_std, "neuron_is_good": good_unit}
 
     if 'channels' not in list(old_data_dict):
-        ch_list = ["Vm1", "Vm2", "IN5", "IN6"]
+        ch_list = ["Vm1", "Vm2", "IN4", "IN5", "IN6", "IN7"]
         ch_dict = {}
         for channel in ch_list:
             ch_dict[channel] = str(input("what did %s record?" % channel))

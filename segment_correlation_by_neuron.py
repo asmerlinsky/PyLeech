@@ -167,7 +167,7 @@ for j in range(6,8):
         print('neuron %i' % key)
         # correlation = spsig.correlate(items[1], items[1])
         fig, ax = plt.subplots(1,1)
-        fU.plotSpectrums(items[1], sampling_rate= fs/5)
+        fU.plotSpectrums(items[1], sampling_rate=fs / 5)
         # ax.plot(correlation)
         # ax.set_ylim([-10,100])
         # ax.set_xlim([.49*len(correlation), .51*len(correlation)])

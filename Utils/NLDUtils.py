@@ -12,6 +12,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.preprocessing import StandardScaler
 import findiff
 import more_itertools as mit
+from numba import jit
 
 
 def generateGaussianKernel(sigma, time_range, dt_step):
@@ -49,7 +50,6 @@ def getSpikeIdxs(binned_sfd, crawling_intervals):
     return np.hstack(spike_idxs)
 
 
-
 def getSegmentsMean(embedding_trace, interval_list):
     max_len = np.max(np.diff(interval_list, axis=1))
     resampled_data = []
@@ -67,21 +67,66 @@ def getSegmentsMedian(embedding_trace, interval_list):
     return np.median(np.array(resampled_data), axis=0)
 
 
-def getCloseReturns(embedding_space1, embedding_space2=None, get_mask=False, threshold=.1):
-    if embedding_space2 is None:
-        dist = embedding_space1[:, np.newaxis, :] - embedding_space1[np.newaxis, :, :]
-    else:
-        dist = embedding_space2[np.newaxis, :, :] - embedding_space1[:, np.newaxis, :]
+def getCloseReturns(embedding_space1, embedding_space2=None, get_mask=False, threshold=.1, low_memory=False):
+    if embedding_space1.dtype == np.float64:
+        embedding_space1 = embedding_space1.astype(np.float32, copy=False)
+    if embedding_space2 is not None and embedding_space2.dtype == np.float64:
+        embedding_space2 = embedding_space2.astype(np.float32, copy=False)
 
-    if dist.shape[2]>1:
-        dist = np.sqrt(np.sum(dist ** 2, axis=2))
+    if not low_memory:
+        if embedding_space2 is None:
+            dist = embedding_space1[:, np.newaxis, :] - embedding_space1[np.newaxis, :, :]
+        else:
+            dist = embedding_space2[np.newaxis, :, :] - embedding_space1[:, np.newaxis, :]
+
+        if dist.shape[2] > 1:
+            dist = np.sqrt(np.sum(dist ** 2, axis=2))
+        else:
+            dist = np.abs(dist)[:, :, 0]
+        dist[np.isnan(dist)] = np.max(dist[~np.isnan(dist)])
     else:
-        dist = np.abs(dist)[:, :, 0]
-    dist[np.isnan(dist)] = np.max(dist[~np.isnan(dist)])
+        if embedding_space2 is None:
+
+            dist = computeSingleDistance(embedding_space1)
+            dist = lowDiagConstant(dist, dist.max())
+
+        else:
+            dist = np.zeros((embedding_space1.shape[0], embedding_space2.shape[0]), dtype=np.float32)
+            for i in range(dist.shape[0]):
+                for j in range(i, dist.shape[1]):
+                    dist[i, j] = np.abs(embedding_space1[i, 0] - embedding_space2[j, 0])
+
     if get_mask:
         return dist < threshold * np.max(dist[~np.isnan(dist)])
     else:
         return dist
+
+
+@jit
+def computeSingleDistance(trace1):
+    dist = np.zeros((trace1.shape[0], trace1.shape[0]), dtype=np.float32)
+    for i in range(dist.shape[0]):
+        for j in range(dist.shape[1]):
+            dist[i, j] = np.abs(trace1[i, 0] - trace1[j, 0])
+
+    return dist
+
+
+@jit
+def lowDiagConstant(mat, ct):
+    for i in range(mat.shape[1]):
+        for j in range(i, mat.shape[0]):
+            mat[j, i] = ct
+    return mat
+
+
+def computeDistance(trace1, trace2):
+    dist = np.zeros((trace1.shape[0], trace2.shape[0]), dtype=np.float32)
+    for i in range(dist.shape[0]):
+        for j in range(dist.shape[1]):
+            dist[i, j] = np.abs(trace1[i, 0] - trace2[j, 0])
+
+    return dist
 
 
 def getCloseReturnsSegments(masked_reordered_returns, rt_len=50):
@@ -131,8 +176,7 @@ def getCloseReturnsSegmentsFromUnorderedMatrix1(masked_returns, single_file=Fals
 
                 col_idxs = np.fromiter(group, dtype=int)
                 if col_idxs.size >= rt_len:
-                    segments_dict[k].append([col_idxs[0]-k, col_idxs[-1]-k])
-
+                    segments_dict[k].append([col_idxs[0] - k, col_idxs[-1] - k])
 
     for k in range(min_dist, masked_returns.shape[1] - rt_len):
         row_diag = np.where(masked_returns.diagonal(k))[0]
@@ -186,9 +230,8 @@ def getCloseReturnsSegmentsFromUnorderedMatrix(masked_returns, zeros=None, true_
                 col_idxs = np.fromiter(group, dtype=int)
                 row_idxs = col_idxs - k
                 tot_zeros = col_zeros_diag[col_idxs[0]:col_idxs[-1]].sum()
-                if tot_zeros <= ((1-true_rt_pct)*col_idxs.shape[0]) and (col_idxs.shape[0]-tot_zeros) > rt_len:
+                if tot_zeros <= ((1 - true_rt_pct) * col_idxs.shape[0]) and (col_idxs.shape[0] - tot_zeros) > rt_len:
                     segments_dict[k].append([row_idxs[0], row_idxs[-1]])
-
 
     for k in range(min_dist, masked_returns.shape[1] - rt_len):
         row_diag = np.where(masked_returns.diagonal(k))[0]
@@ -206,7 +249,7 @@ def getCloseReturnsSegmentsFromUnorderedMatrix(masked_returns, zeros=None, true_
 
             row_idxs = np.fromiter(group, dtype=int)
             tot_zeros = row_zeros_diag[row_idxs[0]:row_idxs[-1]].sum()
-            if  tot_zeros <= ((1-true_rt_pct)*row_idxs.shape[0]) and (row_idxs.shape[0]-tot_zeros) > rt_len:
+            if tot_zeros <= ((1 - true_rt_pct) * row_idxs.shape[0]) and (row_idxs.shape[0] - tot_zeros) > rt_len:
                 segments_dict[k].append([row_idxs[0], row_idxs[-1]])
 
     new_dict = {}
@@ -214,7 +257,6 @@ def getCloseReturnsSegmentsFromUnorderedMatrix(masked_returns, zeros=None, true_
         if segments_dict[k]:
             new_dict[k] = np.array(segments_dict[k])
     return new_dict
-
 
 
 #
@@ -325,6 +367,7 @@ def getLastIdxFromZeros(zeros_trace, last_idx):
             return last_idx - 1
     return last_idx - 1
 
+
 def getMainDiagonals(segment_dict):
     diags = list(segment_dict)
     main_diags = []
@@ -374,6 +417,97 @@ def getDerivativeEmbedding(trace, dt, emb_size):
 def getTraceEmbedding(trace, step, emb_size):
     imbedding = [trace[step * i:(i - emb_size) * step] for i in range(emb_size)]
     return np.stack(imbedding, axis=1)
+
+
+def getCycles(trace, fs=.1, peak_height=0, distance=15):
+    peaks_idxs = spsig.find_peaks(trace, height=peak_height, distance=int(distance / fs))[0]
+    max_len = np.diff(peaks_idxs).max()
+
+    rescaled_trace = np.array(())
+    for i in range(peaks_idxs.shape[0] - 1):
+        rescaled_trace = np.append(rescaled_trace, spsig.resample(trace[peaks_idxs[i]:peaks_idxs[i + 1]], num=max_len)
+                                   )
+
+    kernel = generateGaussianKernel(.5, 2, .1)
+    rescaled_trace = spsig.fftconvolve(rescaled_trace, kernel, mode='same')
+
+    for i in range(1, peaks_idxs.shape[0] - 2):
+        try:
+            cycle_array = np.vstack((cycle_array, rescaled_trace[i * max_len:(i + 1) * max_len]))
+        except NameError:
+            cycle_array = rescaled_trace[i * max_len:(i + 1) * max_len]
+    return cycle_array
+
+
+def getNCycles(trace, fs=.1, peak_height=0, distance=15, N=2):
+    peaks_idxs = spsig.find_peaks(trace, height=peak_height, distance=int(distance / fs))[0]
+    max_len = np.diff(peaks_idxs).max()
+
+    rescaled_trace = np.array(())
+    for i in range(peaks_idxs.shape[0] - 1):
+        rescaled_trace = np.append(rescaled_trace, spsig.resample(trace[peaks_idxs[i]:peaks_idxs[i + 1]], num=max_len)
+                                   )
+
+    kernel = generateGaussianKernel(.5, 2, .1)
+    rescaled_trace = spsig.fftconvolve(rescaled_trace, kernel, mode='same')
+
+    for i in range(1, peaks_idxs.shape[0] - (N + 1)):
+        try:
+            cycle_array = np.vstack((cycle_array, rescaled_trace[i * max_len:(i + N) * max_len]))
+        except NameError:
+            cycle_array = rescaled_trace[i * max_len:(i + N) * max_len]
+    return cycle_array
+
+
+def compareCycles(cycle_mat):
+    dist = cycle_mat[:, np.newaxis, :] - cycle_mat[np.newaxis, :, :]
+    return np.sqrt(np.sum(dist ** 2, axis=2))
+
+
+def getSimilarCycles(cycle_arr, num=10):
+    cycle_dist = compareCycles(cycle_arr)
+    np.fill_diagonal(cycle_dist, cycle_dist.max())
+    return np.array(smallest_indices(cycle_dist, 2 * num)).T[::2]
+
+
+def resampleByCycles(trace, fs=.1, peak_height=0, distance=15):
+    peaks_idxs = spsig.find_peaks(trace, height=peak_height, distance=int(distance / fs))[0]
+    max_len = np.diff(peaks_idxs).max()
+    rescaled_trace = np.array(())
+
+    for i in range(peaks_idxs.shape[0] - 1):
+        rescaled_trace = np.append(rescaled_trace, spsig.resample(trace[peaks_idxs[i]:peaks_idxs[i + 1]], num=max_len)
+                                   )
+    return rescaled_trace
+
+
+def plotCycles(trace, fs=.1, peak_height=0, distance=15, N=1):
+    peaks_idxs = spsig.find_peaks(trace, height=peak_height, distance=int(distance / fs))[0]
+    max_len = np.diff(peaks_idxs).max()
+    fig, ax = plt.subplots()
+    rescaled_trace = np.array(())
+    for i in range(peaks_idxs.shape[0] - 1):
+        rescaled_trace = np.append(rescaled_trace, spsig.resample(trace[peaks_idxs[i]:peaks_idxs[i + 1]], num=max_len)
+                                   )
+
+    kernel = generateGaussianKernel(.5, 2, .1)
+    rescaled_trace = spsig.fftconvolve(rescaled_trace, kernel, mode='same')
+    for i in range(1, peaks_idxs.shape[0] - (N + 1)):
+        ax.plot(rescaled_trace[i * max_len:(i + N) * max_len], label=i)
+
+    ax.legend()
+    return fig, ax
+
+
+def smallest_indices(ary, n):
+    """Returns the n smallest indices from a numpy array."""
+    flat = ary.flatten()
+    if n < flat.shape[0]:
+        indices = np.argpartition(flat, n)[:n]
+    else:
+        indices = np.argpartition(flat, flat.shape[0] - 1)
+    indices = indices[np.argsort(flat[indices])]
+    return np.unravel_index(indices, ary.shape)
 
 
 def getPcaBase(array_mat, vect_num=3, plot_vectors=False):
@@ -547,6 +681,7 @@ def on_move(ax_list, event):
         return
     fig.canvas.draw_idle()
 
+
 def lorenz(x, y, z, s=10, r=28, b=2.667):
     '''
     Given:
@@ -556,20 +691,35 @@ def lorenz(x, y, z, s=10, r=28, b=2.667):
        x_dot, y_dot, z_dot: values of the lorenz attractor's partial
            derivatives at the point x, y, z
     '''
-    x_dot = s*(y - x)
-    y_dot = r*x - y - x*z
-    z_dot = x*y - b*z
+    x_dot = s * (y - x)
+    y_dot = r * x - y - x * z
+    z_dot = x * y - b * z
     return x_dot, y_dot, z_dot
 
-def simulateLorenz(dt=.01, num_steps=10000, x0=np.array([0., 1., 1.05])):
 
+def rossler(x, y, z, a=.1, b=.1, c=14):
+    '''
+    Given:
+       x, y, z: a point of interest in three dimensional space
+       a, b, c: parameters defining the Rössler attractor
+    Returns:
+       x_dot, y_dot, z_dot: values of the rössler attractor's partial
+           derivatives at the point x, y, z
+    '''
+    x_dot = - y - z
+    y_dot = x + a * y
+    z_dot = b + z * (x - c)
+    return x_dot, y_dot, z_dot
+
+
+def simDynamicalSistem(*params, func=lorenz, num_steps=10000, x0=np.array([0., 1., 1.05]), dt=.01):
     xs = np.empty(num_steps + 1)
     ys = np.empty(num_steps + 1)
     zs = np.empty(num_steps + 1)
 
     xs[0], ys[0], zs[0] = x0
     for i in range(num_steps):
-        x_dot, y_dot, z_dot = lorenz(xs[i], ys[i], zs[i])
+        x_dot, y_dot, z_dot = func(xs[i], ys[i], zs[i], *params)
         xs[i + 1] = xs[i] + (x_dot * dt)
         ys[i + 1] = ys[i] + (y_dot * dt)
         zs[i + 1] = zs[i] + (z_dot * dt)

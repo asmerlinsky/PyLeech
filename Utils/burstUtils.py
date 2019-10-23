@@ -1,7 +1,7 @@
 import math
 import os.path
 import pickle as pickle
-
+import pandas as pd
 import matplotlib.colors
 import numpy as np
 import pandas as pd
@@ -129,7 +129,11 @@ def plotDataPredictionAndResult(time, data, pred):
     res = data - pred
     for i in range(len(data)):
         fig = plt.figure(figsize=(16, 8))
-        ax1 = fig.add_subplot(3, 1, 1)
+        try:
+            ax1 = fig.add_subplot(3, 1, 1, sharex=ax1)
+        except UnboundLocalError:
+            ax1 = fig.add_subplot(3, 1, 1)
+
         ax2 = fig.add_subplot(3, 1, 2, sharex=ax1, sharey=ax1)
         ax3 = fig.add_subplot(3, 1, 3, sharex=ax1, sharey=ax1)
         fig.suptitle('channel ' + str(i))
@@ -233,7 +237,7 @@ def plot_detection(data_list,
 
 def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dict=None, scatter_plot=True,
              single_figure=False,
-             skip_list=None, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None):
+             skip_list=None, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None, facecolor='lightgray'):
     """Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
 
             Parameters
@@ -257,7 +261,7 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
         keys = [key for key in list(spike_freq_dict) if (key in draw_list) and (key not in skip_list)]
         keys.sort()
         color_dict = setGoodColors(keys)
-    elif color_dict is 'single_color':
+    elif color_dict is 'single_color' or 'k':
         color_dict = {key: 'k' for key in spike_freq_dict.keys()}
 
     fig = plt.figure(figsize=(12, 6))
@@ -273,6 +277,7 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
 
     hdl = []
     lbl = []
+
     for key, items in spike_freq_dict.items():
         if key in draw_list and key not in skip_list:
             if thres is None:
@@ -291,8 +296,8 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
                             label += ': ch ' + str(template_dict[key]['channels'][0])
                     else:
                         label += ': chs:'
-                        for i in template_dict[key]['channels']:
-                            label += ' ' + str(i)
+                        for chan in template_dict[key]['channels']:
+                            label += ' ' + str(chan)
                 except:
                     pass
 
@@ -303,11 +308,11 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
                 data1 = data1[~is_outlier(data1, outlier_thres)]
 
             if sharex is not None:
-                ax = plt.subplot(j, 1, i, sharex=sharex)
+                ax = fig.add_subplot(j, 1, i, sharex=sharex, label=i)
             elif i == 1:
-                ax = plt.subplot(j, 1, i)
+                ax = fig.add_subplot(j, 1, i, label=i)
             else:
-                ax = plt.subplot(j, 1, i, sharex=ax)
+                ax = fig.add_subplot(j, 1, i, sharex=ax, label=i)
 
             if scatter_plot:
                 ax.scatter(data0, data1, color=color_dict[key], label=label, s=ms)
@@ -316,7 +321,7 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
             # ax.legend()
             ax.grid(linestyle='dotted')
             removeTicksFromAxis(ax, 'x')
-            ax.set_facecolor('lightgray')
+            ax.set_facecolor(facecolor)
             ax.legend()
             if not single_figure:
                 i += 1
@@ -326,11 +331,11 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
         if single_figure:
             i += 1
         if sharex is not None:
-            ax = plt.subplot(j, 1, i, sharex=sharex)
+            ax = fig.add_subplot(j, 1, i, sharex=sharex, label=i)
         elif i == 1:
-            ax = plt.subplot(j, 1, i)
+            ax = fig.add_subplot(j, 1, i, label=i)
         else:
-            ax = plt.subplot(j, 1, i, sharex=ax)
+            ax = fig.add_subplot(j, 1, i, sharex=ax, label=i)
 
 
         ax.plot(optional_trace[0], optional_trace[1], color='k', lw=1)
@@ -584,6 +589,33 @@ def processSpikeFreqDict(spike_freq_dict, step, num=None, outlier_threshold=3.5,
     new_sfd = digitizeSpikeFreqs(new_sfd, step=step, num=num, time_length=time_length, counting=counting,
                                  freq_threshold=freq_threshold)
     return binned_spike_freq_dict_ToArray(new_sfd, time_interval=time_interval, good_neurons=selected_neurons)
+
+def smoothBinnedSpikeFreqDict(binned_sfd, ):
+    smoothed_sfd = {}
+    kernel = NLD.gen
+    for key, items in binned_sfd.items():
+        smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])
+
+def saveSpikeFreqDictToBinnedMat(spike_freq_dict, step, filename, num=None, outlier_threshold=3.5, selected_neurons=None, time_length=None,
+                         time_interval=None, counting=False, freq_threshold=200):
+    binned_sfd = processSpikeFreqDict(spike_freq_dict, step=step, num=num, outlier_threshold=outlier_threshold, selected_neurons=selected_neurons, time_length=time_length,
+                         time_interval=time_interval, counting=counting, freq_threshold=freq_threshold)
+    burst_array = []
+    for key, items in binned_sfd.items():
+        burst_array.append(items[1])
+    burst_array = np.array(burst_array).T
+    filename = os.path.splitext(filename)[0]
+    pd.DataFrame(burst_array, columns=list(binned_sfd)).to_csv(filename + '.csv', index=False)
+
+def saveBinnedSfdToBinnedMat(binned_sfd, filename):
+    burst_array = []
+    for key, items in binned_sfd.items():
+        burst_array.append(items[1])
+    burst_array = np.array(burst_array).T
+    filename = os.path.splitext(filename)[0] + '.csv'
+    print('Saving in %s' % filename)
+    pd.DataFrame(burst_array, columns=list(binned_sfd)).to_csv(filename, index=False)
+    
 
 def generateBurstSegmentsFromManyNeurons(smoothed_sfd, intervals_dict):
     burst_list = []
