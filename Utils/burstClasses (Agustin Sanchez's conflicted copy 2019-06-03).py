@@ -1,3 +1,4 @@
+import PyLeech.Utils.burstUtils
 from PyLeech.Utils import filterUtils as filterUtils
 import PyLeech.Utils.burstUtils as burstUtils
 import PyLeech.Utils.NLDUtils as NLD
@@ -338,7 +339,7 @@ class SegmentandCorrelate(NSSegmenter):
     def smoothNeurons(self):
         self.spike_freq_dict = burstUtils.binSpikesFreqs(self.spike_freq_dict, self.time[-1], self.bin_step, full_binning=True)
 
-        kernel = NLD.generateGaussianKernel(sigma=self.sigma, time_range=self.time_range, dt_step=self.bin_step)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=self.sigma, time_range=self.time_range, dt_step=self.bin_step)
         new_dict = {}
         for key, items in self.spike_freq_dict.items():
             smoothed = spsig.fftconvolve(items[1], kernel, mode='same')
@@ -362,7 +363,7 @@ class SegmentandCorrelate(NSSegmenter):
         # filtered_intracel = self.intracel_signal - np.median(mean_array)
         filtered_intracel = self.intracel_signal
 
-        kernel = NLD.generateGaussianKernel(self.sigma, self.time_range, 1 / self.fs)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(self.sigma, self.time_range, 1 / self.fs)
         self.filtered_intracel = spsig.fftconvolve(self.intracel_signal, kernel, mode='same')
         self.filtered_intracel = self.filtered_intracel[::int(self.bin_step * self.fs)]
 

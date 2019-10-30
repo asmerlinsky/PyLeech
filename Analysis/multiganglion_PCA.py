@@ -1,4 +1,5 @@
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
+import PyLeech.Utils.burstUtils
 from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
 import PyLeech.Utils.AbfExtension as abfe
 import PyLeech.Utils.burstUtils as burstUtils
@@ -63,7 +64,7 @@ if __name__ == '__main__':
 
         if ns_channel is not None:
             arr_dict, time_vector1, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1'])
-            NS_kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=1/fs)
+            NS_kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=1 / fs)
             conv_NS = spsig.fftconvolve(arr_dict[ns_channel], NS_kernel, mode='same')[::int(binning_dt * fs)]
         else:
             arr_dict, time_vector1, fs = abfe.getArraysFromAbfFiles(fn, ['IN5'])
@@ -85,7 +86,7 @@ if __name__ == '__main__':
         smoothed_sfd = {}
         burst_array = []
 
-        kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
         if ns_channel is not None:
             burst_array.append(conv_NS)
 

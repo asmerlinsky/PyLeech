@@ -1,4 +1,5 @@
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
+import PyLeech.Utils.burstUtils
 from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
@@ -47,8 +48,8 @@ if __name__ == "__main__":
         ran_files.append(os.path.splitext(os.path.basename(fn))[0])
         run_dict[os.path.splitext(os.path.basename(fn))[0]] = i
 
-        NS_kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=1 / fs)
-        bl_kernel = NLD.generateGaussianKernel(sigma=45, time_range=10*60, dt_step=1 / fs)
+        NS_kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=1 / fs)
+        bl_kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=45, time_range=10 * 60, dt_step=1 / fs)
         data = arr_dict[ns_channel] - np.mean(arr_dict[ns_channel])
         data[(data<-20) | (data>20)] = 0
 

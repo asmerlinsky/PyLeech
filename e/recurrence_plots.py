@@ -3,6 +3,7 @@ import PyLeech.Utils.AbfExtension as abfe
 
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
 import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.burstUtils
 import PyLeech.Utils.burstUtils as burstUtils
 import os
 import numpy as np
@@ -72,7 +73,7 @@ if __name__ == "__main__":
 
         cut_time1 = time_vector1[idxs1]
 
-        kernel = NLD.generateGaussianKernel(sigma=4, time_range=30, dt_step=1 / fs1)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=4, time_range=30, dt_step=1 / fs1)
         conv_NS1 = spsig.fftconvolve(NS1, kernel, mode='same')
         cut_NS1 = conv_NS1[idxs1]
 

@@ -1,3 +1,4 @@
+import PyLeech.Utils.burstUtils
 from PyLeech.Utils import filterUtils as filterUtils
 import PyLeech.Utils.burstUtils as burstUtils
 import PyLeech.Utils.NLDUtils as NLD
@@ -38,13 +39,15 @@ class CrawlingSegmenter():
         self.generateSegments()
 
     def generateInterval(self, dp_trace, time, de3_neuron, min_spike_no=5, min_spike_per_sec=5,
-                         spike_max_dist=0.7, no_bursts=1):
+                         spike_max_dist=0.7, no_bursts=1, linewidth=2):
         burst_list = burstUtils.getBursts(np.array(self.spike_freq_dict[de3_neuron][0]), min_spike_no=min_spike_no,
                                           min_spike_per_sec=min_spike_per_sec, spike_max_dist=spike_max_dist)
+
         print("Check whether bursts were correctly selected")
-        plt.figure()
-        plt.plot(time, dp_trace, linewidth=1, color='k')
-        t0 = []
+        max_freq = self.spike_freq_dict[de3_neuron][1][~burstUtils.is_outlier(self.spike_freq_dict[de3_neuron][1])].max()
+        fig, ax = burstUtils.plotFreq({'de3': np.array(self.spike_freq_dict[de3_neuron])}, outlier_thres=3.5, color='k')
+        for spikes in burst_list:
+            ax.plot([spikes[0], spikes[-1]], [25, 25], color='r', linewidth=linewidth)
 
         self.intervals = burstUtils.getInterBurstInterval(burst_list, no_bursts)
 
@@ -233,8 +236,8 @@ class SegmentandCorrelate(CrawlingSegmenter):
                                                                time_length=self.time[-1],
                                                                outlier_threshold=self.outlier_threshold)
 
-        kernel = NLD.generateGaussianKernel(sigma=self.spike_sigma, time_range=self.kernel_time_range,
-                                            dt_step=self.bin_step)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=self.spike_sigma, time_range=self.kernel_time_range,
+                                                                 dt_step=self.bin_step)
         new_dict = {}
         for key, items in self.spike_freq_dict.items():
             new_dict[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])
@@ -246,7 +249,7 @@ class SegmentandCorrelate(CrawlingSegmenter):
         if no_cycles is None:
             no_cycles = self.no_cycles
 
-        kernel = NLD.generateGaussianKernel(self.intra_sigma, self.kernel_time_range, 1 / self.fs)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(self.intra_sigma, self.kernel_time_range, 1 / self.fs)
         self.filtered_intracel = spsig.fftconvolve(self.intracel_signal, kernel, mode='same')
         self.filtered_intracel = self.filtered_intracel[::int(self.bin_step * self.fs)]
 

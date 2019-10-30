@@ -2,6 +2,7 @@
 # [sys.path.append(i) for i in ['.', '..']]
 
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
+import PyLeech.Utils.burstUtils
 from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
@@ -30,7 +31,7 @@ if __name__ == "__main__":
         spike_freq_array = burstUtils.processSpikeFreqDict(burst_object.spike_freq_dict, .1, selected_neurons=[burst_object.isDe3],
                                                            time_length=burst_object.time[-1])
 
-        kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
         smoothed_sfd = {}
         for key, items in spike_freq_array.items():
             smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])

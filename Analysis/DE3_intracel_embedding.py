@@ -1,6 +1,7 @@
 import PyLeech.Utils.NLDUtils as NLD
 import PyLeech.Utils.AbfExtension as abfe
 import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.burstUtils
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
 import scipy.signal as spsig
@@ -23,11 +24,11 @@ DE3[(DE3 > 20+DE3_median) | (DE3 < -20+DE3_median)] = np.median(DE3)
 
 
 kernel_sigma = 10
-kernel = NLD.generateGaussianKernel(sigma=kernel_sigma, time_range=30, dt_step=1 / fs)
+kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=kernel_sigma, time_range=30, dt_step=1 / fs)
 bl_DE3 = spsig.fftconvolve(DE3, kernel, mode='same')
 
 kernel_sigma = 1
-kernel = NLD.generateGaussianKernel(sigma=kernel_sigma, time_range=30, dt_step=1 / fs)
+kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=kernel_sigma, time_range=30, dt_step=1 / fs)
 
 # conv_DE3 = spsig.fftconvolve(DE3-bl_DE3, kernel, mode='same')
 conv_DE3 = spsig.fftconvolve(DE3, kernel, mode='same')

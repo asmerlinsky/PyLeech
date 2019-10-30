@@ -3,6 +3,7 @@ import PyLeech.Utils.AbfExtension as abfe
 
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
 import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.burstUtils
 import PyLeech.Utils.burstUtils as burstUtils
 
 import numpy as np
@@ -54,7 +55,7 @@ if __name__ == "__main__":
         new_sfd = burstUtils.removeOutliers(burst_obj.spike_freq_dict, 5)
         binned_sfd = burstUtils.digitizeSpikeFreqs(new_sfd, binning_dt, time_vector[-1], counting=False)
         cut_binned_freq_array = burstUtils.binned_spike_freq_dict_ToArray(binned_sfd, crawling_intervals, good_neurons)
-        kernel = NLD.generateGaussianKernel(sigma=kernel_sigma, time_range=20, dt_step=binning_dt)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=kernel_sigma, time_range=20, dt_step=binning_dt)
         smoothed_sfd = {}
         for key, items in binned_sfd.items():
             smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])
@@ -68,7 +69,7 @@ if __name__ == "__main__":
 
         cut_time1 = time_vector[neuron_idxs]
 
-        kernel = NLD.generateGaussianKernel(sigma=kernel_sigma, time_range=30, dt_step=1 / fs)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=kernel_sigma, time_range=30, dt_step=1 / fs)
         conv_NS = spsig.fftconvolve(NS, kernel, mode='same')
         cut_NS = conv_NS[neuron_idxs]
         #

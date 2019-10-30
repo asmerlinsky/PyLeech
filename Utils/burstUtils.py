@@ -237,7 +237,7 @@ def plot_detection(data_list,
 
 def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dict=None, scatter_plot=True,
              single_figure=False,
-             skip_list=None, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None, facecolor='lightgray'):
+             skip_list=None, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None, facecolor='lightgray', legend=True):
     """Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
 
             Parameters
@@ -256,13 +256,13 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
         skip_list = []
     if draw_list is None:
         draw_list = list(spike_freq_dict.keys())
+        if color_dict is None:
+            keys = [key for key in list(spike_freq_dict) if (key in draw_list) and (key not in skip_list)]
+            keys.sort()
+            color_dict = setGoodColors(keys)
+        elif (color_dict is 'single_color') or (color_dict is 'k'):
+            color_dict = {key: 'k' for key in spike_freq_dict.keys()}
 
-    if color_dict is None:
-        keys = [key for key in list(spike_freq_dict) if (key in draw_list) and (key not in skip_list)]
-        keys.sort()
-        color_dict = setGoodColors(keys)
-    elif color_dict is 'single_color' or 'k':
-        color_dict = {key: 'k' for key in spike_freq_dict.keys()}
 
     fig = plt.figure(figsize=(12, 6))
     fig.tight_layout()
@@ -322,7 +322,8 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
             ax.grid(linestyle='dotted')
             removeTicksFromAxis(ax, 'x')
             ax.set_facecolor(facecolor)
-            ax.legend()
+            if legend:
+                ax.legend()
             if not single_figure:
                 i += 1
             ax_list.append(ax)
@@ -590,11 +591,6 @@ def processSpikeFreqDict(spike_freq_dict, step, num=None, outlier_threshold=3.5,
                                  freq_threshold=freq_threshold)
     return binned_spike_freq_dict_ToArray(new_sfd, time_interval=time_interval, good_neurons=selected_neurons)
 
-def smoothBinnedSpikeFreqDict(binned_sfd, ):
-    smoothed_sfd = {}
-    kernel = NLD.gen
-    for key, items in binned_sfd.items():
-        smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])
 
 def saveSpikeFreqDictToBinnedMat(spike_freq_dict, step, filename, num=None, outlier_threshold=3.5, selected_neurons=None, time_length=None,
                          time_interval=None, counting=False, freq_threshold=200):
@@ -802,3 +798,17 @@ def resampleArrayList(arr_list1, arr_list2):
     return resampled_arr_list1, resampled_arr_list2
 
 
+def generateGaussianKernel(sigma, time_range, dt_step):
+    sigma = sigma
+    time_range = time_range
+    x_range = np.arange(-time_range, time_range, dt_step)
+    gaussian = np.exp(-(x_range / sigma) ** 2)
+    gaussian /= gaussian.sum()
+    return gaussian
+
+def smoothBinnedSpikeFreqDict(binned_sfd, sigma, time_range, dt_step):
+    smoothed_sfd = {}
+    kernel = generateGaussianKernel(sigma=sigma, time_range=time_range, dt_step=dt_step)
+    for key, items in binned_sfd.items():
+        smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])
+    return smoothed_sfd

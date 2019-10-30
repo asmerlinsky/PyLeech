@@ -4,6 +4,7 @@ import PyLeech.Utils.NLDUtils as NLD
 import numpy as np
 import scipy.signal as spsig
 import PyLeech.Utils.AbfExtension as abfe
+import PyLeech.Utils.burstUtils
 from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
 import PyLeech.Utils.filterUtils as filterUtils
 import PyLeech.Utils.burstUtils as burstUtils
@@ -35,7 +36,7 @@ if __name__ == "__main__":
 
         arr_dict, time_vector1, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1'])
 
-        NS_kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=1 / fs)
+        NS_kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=1 / fs)
         conv_NS = spsig.fftconvolve(arr_dict[ns_channel], NS_kernel, mode='same')[::int(binning_dt * fs)]
         time_vector1 = time_vector1[::int(binning_dt * fs)]
         del arr_dict
@@ -53,7 +54,7 @@ if __name__ == "__main__":
 
 
         smoothed_sfd = {}
-        kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
         for key, items in spike_freq_array.items():
             smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])
         burst_array = []
@@ -63,7 +64,7 @@ if __name__ == "__main__":
                                            optional_trace=[time_vector1, conv_NS])
         fig.suptitle(fn)
 
-        kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
         N_neurons = len(list(spike_freq_array)) + 1
         burst_array.append(conv_NS)
         fig = plt.figure()

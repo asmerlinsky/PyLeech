@@ -3,6 +3,7 @@ import PyLeech.Utils.AbfExtension as abfe
 from functools import partial
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
 import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.burstUtils
 import PyLeech.Utils.burstUtils as burstUtils
 import os
 import math
@@ -59,12 +60,12 @@ if __name__ == "__main__":
 
         cut_time = time_vector[idxs]
 
-        kernel = NLD.generateGaussianKernel(sigma=4, time_range=30, dt_step=1/fs)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=4, time_range=30, dt_step=1 / fs)
         conv_NS = spsig.fftconvolve(NS, kernel, mode='same')
         cut_NS = conv_NS[idxs]
         cut_binned_freq_array = burstUtils.binned_spike_freq_dict_ToArray(binned_sfd, crawling_interval, good_neurons)
 
-        kernel = NLD.generateGaussianKernel(sigma=2, time_range=20, dt_step=.1)
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=2, time_range=20, dt_step=.1)
         smoothed_sfd = {}
         for key, items in cut_binned_freq_array.items():
             smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])

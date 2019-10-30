@@ -14,16 +14,6 @@ import findiff
 import more_itertools as mit
 from numba import jit
 
-
-def generateGaussianKernel(sigma, time_range, dt_step):
-    sigma = sigma
-    time_range = time_range
-    x_range = np.arange(-time_range, time_range, dt_step)
-    gaussian = np.exp(-(x_range / sigma) ** 2)
-    gaussian /= gaussian.sum()
-    return gaussian
-
-
 def generateOutputSpace(binned_spike_freq_dict, fs, intracel_signal=None):
     dt = binned_spike_freq_dict[list(binned_spike_freq_dict)[0]][0, 1] - \
          binned_spike_freq_dict[list(binned_spike_freq_dict)[0]][0, 0]
@@ -428,7 +418,7 @@ def getCycles(trace, fs=.1, peak_height=0, distance=15):
         rescaled_trace = np.append(rescaled_trace, spsig.resample(trace[peaks_idxs[i]:peaks_idxs[i + 1]], num=max_len)
                                    )
 
-    kernel = generateGaussianKernel(.5, 2, .1)
+    kernel = burstUtils.generateGaussianKernel(.5, 2, .1)
     rescaled_trace = spsig.fftconvolve(rescaled_trace, kernel, mode='same')
 
     for i in range(1, peaks_idxs.shape[0] - 2):
@@ -448,7 +438,7 @@ def getNCycles(trace, fs=.1, peak_height=0, distance=15, N=2):
         rescaled_trace = np.append(rescaled_trace, spsig.resample(trace[peaks_idxs[i]:peaks_idxs[i + 1]], num=max_len)
                                    )
 
-    kernel = generateGaussianKernel(.5, 2, .1)
+    kernel = burstUtils.generateGaussianKernel(.5, 2, .1)
     rescaled_trace = spsig.fftconvolve(rescaled_trace, kernel, mode='same')
 
     for i in range(1, peaks_idxs.shape[0] - (N + 1)):
@@ -490,7 +480,7 @@ def plotCycles(trace, fs=.1, peak_height=0, distance=15, N=1):
         rescaled_trace = np.append(rescaled_trace, spsig.resample(trace[peaks_idxs[i]:peaks_idxs[i + 1]], num=max_len)
                                    )
 
-    kernel = generateGaussianKernel(.5, 2, .1)
+    kernel = burstUtils.generateGaussianKernel(.5, 2, .1)
     rescaled_trace = spsig.fftconvolve(rescaled_trace, kernel, mode='same')
     for i in range(1, peaks_idxs.shape[0] - (N + 1)):
         ax.plot(rescaled_trace[i * max_len:(i + N) * max_len], label=i)

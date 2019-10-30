@@ -1,4 +1,5 @@
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
+import PyLeech.Utils.burstUtils
 from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
@@ -20,7 +21,7 @@ if __name__ == "__main__":
 
     binning_dt = 0.1
     spike_kernel_sigma = .7
-    kernel = NLD.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
+    kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
 
     good_neurons = [neuron for neuron, neuron_dict in cdd[fn]['neurons'].items() if neuron_dict['neuron_is_good']]
     good_neurons.remove(9)
