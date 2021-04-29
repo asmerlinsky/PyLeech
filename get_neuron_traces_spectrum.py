@@ -11,7 +11,7 @@ import sys
 
 if True:  # run when starting ipython instance
     sys.path.append(os.getcwd())
-    sys.path.append(os.getcwd() + '\\PyLeech')
+    sys.path.append(os.getcwd() + '/PyLeech')
 
 file_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 wdir = os.path.dirname(file_dir)
@@ -84,7 +84,7 @@ for neuron, amp in file_list.items():
                 plt.legend()
                 # plt.close()
                 fig = plt.figure(figsize=(16, 10))
-                fig.suptitle(trace.split('\\')[1])
+                fig.suptitle(trace.split('/')[1])
                 ax1 = fig.add_subplot(3, 1, 1)
                 ax2 = fig.add_subplot(3, 1, 2, sharex=ax1, sharey=ax1)
                 ax3 = fig.add_subplot(3, 1, 3, sharex=ax1, sharey=ax1)
@@ -99,7 +99,7 @@ for neuron, amp in file_list.items():
                 ax3.grid()
 
                 fig = plt.figure(figsize=(16, 10))
-                fig.suptitle(trace.split('\\')[1])
+                fig.suptitle(trace.split('/')[1])
 
                 ax1 = fig.add_subplot(3, 1, 1)
                 ax2 = fig.add_subplot(3, 1, 2, sharex=ax1)

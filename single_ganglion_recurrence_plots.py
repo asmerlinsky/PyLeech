@@ -2,7 +2,7 @@ import PyLeech.Utils.NLDUtils as NLD
 import PyLeech.Utils.AbfExtension as abfe
 
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
-import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.unitInfo as bStorerLoader
 import PyLeech.Utils.burstUtils
 import PyLeech.Utils.burstUtils as burstUtils
 
@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
     file_list = []
     for files in list(cdd.keys()):
-        burst_obj = bStorerLoader.BurstStorerLoader(files, 'RegistrosDP_PP', mode='load')
+        burst_obj = bStorerLoader.UnitInfo(files, 'RegistrosDP_PP', mode='load')
         try:
             arr_dict, time_vector1, fs = abfe.getArraysFromAbfFiles(files, ['Vm1'])
             file_list.append(files)
@@ -48,13 +48,13 @@ if __name__ == "__main__":
 
         binning_dt = 0.1
 
-        burst_obj = bStorerLoader.BurstStorerLoader(fn, 'RegistrosDP_PP', mode='load')
+        burst_obj = bStorerLoader.UnitInfo(fn, 'RegistrosDP_PP', mode='load')
 
         kernel_sigma = 1
 
         new_sfd = burstUtils.removeOutliers(burst_obj.spike_freq_dict, 5)
         binned_sfd = burstUtils.digitizeSpikeFreqs(new_sfd, binning_dt, time_vector[-1], counting=False)
-        cut_binned_freq_array = burstUtils.binned_spike_freq_dict_ToArray(binned_sfd, crawling_intervals, good_neurons)
+        cut_binned_freq_array = burstUtils.binned_sfd_to_dict_array(binned_sfd, crawling_intervals, good_neurons)
         kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=kernel_sigma, time_range=20, dt_step=binning_dt)
         smoothed_sfd = {}
         for key, items in binned_sfd.items():

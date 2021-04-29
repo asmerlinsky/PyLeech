@@ -12,7 +12,7 @@ import sys
 from PyLeech.Utils.T_DP_classes import TInfo, getIsi
 
 sys.path.append(os.getcwd())
-sys.path.append(os.getcwd() + '\\PyLeech')
+sys.path.append(os.getcwd() + '/PyLeech')
 
 file_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 wdir = os.path.dirname(file_dir)

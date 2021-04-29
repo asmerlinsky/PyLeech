@@ -2,7 +2,7 @@ import PyLeech.Utils.burstUtils
 from PyLeech.Utils import filterUtils as filterUtils
 import PyLeech.Utils.burstUtils as burstUtils
 import PyLeech.Utils.NLDUtils as NLD
-import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.unitInfo as bStorerLoader
 import matplotlib.pyplot as plt
 import numpy as np
 import math
@@ -14,6 +14,21 @@ import warnings
 
 
 def find_nearest(array, list_of_values):
+    """
+    Find closest index values in array for a given list of values
+    Parameters
+    ----------
+    array ndarray:
+        Array against values are being compared with.
+    list_of_values iterable:
+        Values to perform the comparison.
+
+    Returns
+    -------
+    idxs ndarray:
+        array of indexes where `array` is closest for each value in `list_of_values`.
+
+    """
     idxs = []
     for value in list_of_values:
         idxs.append(np.abs(value - array).argmin())
@@ -21,46 +36,131 @@ def find_nearest(array, list_of_values):
 
 
 class CrawlingSegmenter():
+    """Crawling Segmenter.
 
-    def __init__(self, spike_freq_dict, dp_trace=None, time=None, de3_neuron=-1, no_cycles=2, min_spike_no=10,
-                 min_spike_per_sec=10, spike_max_dist=0.7):
-        if dp_trace is not None:
-            assert de3_neuron >= 0;
-            'de3_neuron isn´t properly assigned'
+        This class segments processed spike frequency dictionaries formatted as shown below by
+        looking at DE-3 spike bursts.
+
+        Parameters
+        ----------
+        spike_freq_dict: dict
+            Dictionary formatted as {neuron number: [spike times array, instant frequency array]}.
+        de3_neuron: int
+            Number assigned to DE-3 unit in `spike_freq_dict`
+        no_cycles: int, optional
+            Number of cycles each segment will have after processing. Defaults to 2.
+        min_spike_no: int, optional
+            Minimum number of DE-3 spikes for it to be considered a burst. Defaults to 10.
+        min_spike_per_sec: int, optional
+            Minimum firing rate  for a spike set to be considered a burst. Defaults to 10.
+        spike_max_dist: float, optional
+            Maximum time interval in seconds between spikes for the to be considered part
+            of the same burst. Defaults to 0.7.
+        outlier_thres: float, optional
+            Deviation from mean threshold in standard deviation units. It is only used for
+            spike plotting, ignoring spikes which frequency is this many STD away from the mean value.
+            Deafults to 3.5.
+
+        Attributes
+        ----------
+        intervals: array-like (n_intervals, 2)
+            Time intervals where DE3 met burst conditions. each element is a pair (t_start, t_end).
+
+
+            Crawling intervals extracted according to the selected parameters. It is possible
+            to have more than one interval if DE-3 meets burst conditions more than once during
+            the recording.
+        segment_list: list of dicts
+            A list of dicts where each dict is the extracted spike_freq_dict for the corresponding
+            burst cycle (or cycles if `no_cycles` > 2) with times renormalized to the [0,`no_cycles)
+            interval
+        selected_spikes: list
+            List of relevant unit that will be drawn in the raster plot
+        raster_cmap: dict
+            Dict with neuron: (r,g, b, a) pair. This is the color sequence to be use in the raster plot
+        fig: matplotlib figure
+            Matplotlib Figure instance where the rasterplot was drawn. Useful for editing/saving after
+            being drawn
+        eventplot_ax: matplotlib axes
+            Matplotlib axes instances. For editing purposes
+        binned_raster_dict: dict
+            A dict where each key corresponds to a neuron and its value is a list of lists where each
+            element is the binned activity in each segment.
+
+
+
+        """
+
+    def __init__(self, spike_freq_dict, de3_neuron=-1, no_cycles=2, min_spike_no=10,
+                 min_spike_per_sec=10, spike_max_dist=0.7, outlier_thres=3.5):
+
+        assert de3_neuron >= 0, 'de3_neuron isn´t properly assigned (it was passed as %i)' % de3_neuron
 
         self.no_cycles = no_cycles
         self.de3_neuron = de3_neuron
         self.spike_freq_dict = spike_freq_dict
-        self.intervals = None
 
-        self.generateInterval(dp_trace, time, self.de3_neuron, min_spike_no=min_spike_no,
-                              min_spike_per_sec=min_spike_per_sec, spike_max_dist=spike_max_dist, no_bursts=no_cycles)
+        self.generateInterval(self.de3_neuron, min_spike_no=min_spike_no,
+                              min_spike_per_sec=min_spike_per_sec, spike_max_dist=spike_max_dist, no_bursts=no_cycles,
+                              outlier_thres=outlier_thres)
         self.select_spikes(*list(spike_freq_dict))
         self.generateSegments()
 
-    def generateInterval(self, dp_trace, time, de3_neuron, min_spike_no=5, min_spike_per_sec=5,
-                         spike_max_dist=0.7, no_bursts=1, linewidth=2):
+    def generateInterval(self, de3_neuron, min_spike_no=5, min_spike_per_sec=5,
+                         spike_max_dist=0.7, no_bursts=1, linewidth=2, outlier_thres=3.5):
+        """
+        Generates an evaluation interval based on DE-3 bursts parameters and plots its
+        fire rate for checking purposes.
+
+        Parameters
+        ----------
+        de3_neuron: int
+            DE-3 number as in `self.spike_freq_dict`
+
+        min_spike_no: int, optional
+            Minimum number of DE-3 spikes for it to be considered a burst. Defaults to 5
+        min_spike_per_sec: int, optional
+            Minimum firing rate  for a spike set to be considered a burst. Defaults to 5
+        spike_max_dist: float, optional
+            Maximum time interval in seconds between spikes for the to be considered part
+            of the same burst. Defaults to 0.7
+        no_bursts: int
+            Number of cycles each segment will have. Defaults to 2
+        linewidth: float
+            set the plot linewidths in points.
+        outlier_thres: float
+            Deviation from mean threshold in standard deviation units. It is only used for
+            spike plotting, ignoring spikes which frequency is this many STD away from the mean value.
+
+        Returns
+        -------
+        Nothing. Generated segments are stored in `intervals` attribute
+        """
         burst_list = burstUtils.getBursts(np.array(self.spike_freq_dict[de3_neuron][0]), min_spike_no=min_spike_no,
                                           min_spike_per_sec=min_spike_per_sec, spike_max_dist=spike_max_dist)
 
         print("Check whether bursts were correctly selected")
-        max_freq = self.spike_freq_dict[de3_neuron][1][~burstUtils.is_outlier(self.spike_freq_dict[de3_neuron][1])].max()
-        fig, ax = burstUtils.plotFreq({'de3': np.array(self.spike_freq_dict[de3_neuron])}, outlier_thres=3.5, color='k')
+        # max_freq = self.spike_freq_dict[de3_neuron][1][~burstUtils.is_outlier(self.spike_freq_dict[de3_neuron][1])].max()
+        fig, ax = burstUtils.plotFreq({'de3': np.array(self.spike_freq_dict[de3_neuron])}, outlier_thres=outlier_thres,
+                                      color_dict='k')
         for spikes in burst_list:
-            ax.plot([spikes[0], spikes[-1]], [25, 25], color='r', linewidth=linewidth)
+            ax[0].plot([spikes[0], spikes[-1]], [25, 25], color='r', linewidth=linewidth)
 
         self.intervals = burstUtils.getInterBurstInterval(burst_list, no_bursts)
 
-    def mergeFinalRoundClusters(self, clust_list):
-        clus_obj = clust_list[0]
-        clus_rm = clust_list[1:]
-        for i in clus_rm:
-            self.spike_freq_dict[clus_obj] = np.concatenate(
-                (self.spike_freq_dict[clus_obj], self.spike_freq_dict[i]))
-            del self.spike_freq_dict[i]
-        self.spike_freq_dict[clus_obj] = np.sort(self.spike_freq_dict[clus_obj])
 
-    def generateSegments(self, spike_list=None, time=None, trace=None):
+    # I'm not sure why `mergeFinalRoundClusters` is here so I'll comment it out in case it is eventually needed.
+
+    # def mergeFinalRoundClusters(self, clust_list):
+    #     clus_obj = clust_list[0]
+    #     clus_rm = clust_list[1:]
+    #     for i in clus_rm:
+    #         self.spike_freq_dict[clus_obj] = np.concatenate(
+    #             (self.spike_freq_dict[clus_obj], self.spike_freq_dict[i]))
+    #         del self.spike_freq_dict[i]
+    #     self.spike_freq_dict[clus_obj] = np.sort(self.spike_freq_dict[clus_obj])
+
+    def generateSegments(self, spike_list=None, trace=None):
         i = 0
         self.segment_list = []
         for event in self.intervals:
@@ -162,10 +262,21 @@ class CrawlingSegmenter():
         for ln in vlines:
             self.eventplot_ax.axvline(ln, color='k', linestyle='--', linewidth=1)
 
+    #
+    def binAndMergeCycles(self, num_bins=20):
+        self.binned_raster_dict = {}
+        bins = np.linspace(0, self.no_cycles, num_bins, endpoint=False)
+        for neuron in self.spike_freq_dict.keys():
+            neuron_mat = np.zeros((len(self.segment_list), num_bins))
+            for i in range(len(self.segment_list)):
+                neuron_mat[i, :] = np.bincount(np.digitize(self.segment_list[i][neuron], bins=bins) - 1,
+                                               minlength=num_bins)
+            self.binned_raster_dict[neuron] = neuron_mat
+
 
 class SegmentandCorrelate(CrawlingSegmenter):
     """
-    Using Inheritance only for the "concatenate raster plot method"
+    Applying Inheritance only to use CrawlingSegmenter.concatenateRasterPlot
 
     This class rescales neurons times
 
@@ -236,7 +347,8 @@ class SegmentandCorrelate(CrawlingSegmenter):
                                                                time_length=self.time[-1],
                                                                outlier_threshold=self.outlier_threshold)
 
-        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=self.spike_sigma, time_range=self.kernel_time_range,
+        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=self.spike_sigma,
+                                                                 time_range=self.kernel_time_range,
                                                                  dt_step=self.bin_step)
         new_dict = {}
         for key, items in self.spike_freq_dict.items():
@@ -259,7 +371,7 @@ class SegmentandCorrelate(CrawlingSegmenter):
         for interval in self.time_intervals:
 
             loc = np.where((self.time[::int(self.bin_step * self.fs)] > interval[0]) & (
-                        self.time[::int(self.bin_step * self.fs)] < interval[1]))[0]
+                    self.time[::int(self.bin_step * self.fs)] < interval[1]))[0]
             loc0 = np.where(self.time[::int(self.bin_step * self.fs)] > interval[0])[0][0]
 
             if peak_height is None:
@@ -272,13 +384,13 @@ class SegmentandCorrelate(CrawlingSegmenter):
 
             if self.separate_by_min:
                 intracel_interval_idxs = \
-                spsig.find_peaks(-self.filtered_intracel[loc], height=peak_height, distance=peak_distance,
-                                 prominence=prominence)[0] + loc0
+                    spsig.find_peaks(-self.filtered_intracel[loc], height=peak_height, distance=peak_distance,
+                                     prominence=prominence)[0] + loc0
             else:
                 intracel_interval_idxs = \
-                spsig.find_peaks(self.filtered_intracel[loc], height=peak_height, distance=peak_distance,
-                                 prominence=prominence)[
-                    0] + loc0
+                    spsig.find_peaks(self.filtered_intracel[loc], height=peak_height, distance=peak_distance,
+                                     prominence=prominence)[
+                        0] + loc0
 
             intracel_extreme_idxs.append(
                 intracel_interval_idxs[(self.time[::int(self.bin_step * self.fs)][intracel_interval_idxs] > interval[0])
@@ -329,7 +441,8 @@ class SegmentandCorrelate(CrawlingSegmenter):
 
             for key in self.spike_freq_dict.keys():
 
-                idxs = np.where((self.spike_freq_dict[key][0] > event[0]) & (self.spike_freq_dict[key][0] < event[1]))[0]
+                idxs = np.where((self.spike_freq_dict[key][0] > event[0]) & (self.spike_freq_dict[key][0] < event[1]))[
+                    0]
 
                 # times = self.spike_freq_dict[key][0][idxs]
                 event_freqs = self.spike_freq_dict[key][1][idxs]
@@ -343,7 +456,6 @@ class SegmentandCorrelate(CrawlingSegmenter):
                     raise e
 
             self.segmented_neuron_frequency_list.append(event_freq_dict)
-
 
         self.segment_list = self.segmented_neuron_frequency_list
 
@@ -429,6 +541,8 @@ class NSSegmenter(CrawlingSegmenter):
     def __init__(self, spike_freq_dict, intracel_signal, time_vector, cutoff_freq=1, peak_height=-5.5,
                  peak_distance=10, prominence=5, freq_threshold=150,
                  time_intervals=None, no_cycles=1, NS_is_filtered=False, segment_by_min=False, de3_neuron=None):
+
+        warnings.warn("Warning: This is a deprecated class. Use at your own risk")
 
         self.de3_neuron = de3_neuron
         if self.de3_neuron is None:
@@ -560,11 +674,10 @@ if __name__ == "__main__":
 
     fn = list(cdd)[5]
 
-    burst_obj = bStorerLoader.BurstStorerLoader(fn, 'RegistrosDP_PP', mode='load')
+    burst_obj = bStorerLoader.UnitInfo(fn, 'RegistrosDP_PP', mode='load')
     arr_dict, time, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1'])
     NS = arr_dict['Vm1']
     del arr_dict
-
 
     good_neurons = [neuron for neuron, neuron_dict in cdd[fn]['neurons'].items() if neuron_dict['neuron_is_good']]
 

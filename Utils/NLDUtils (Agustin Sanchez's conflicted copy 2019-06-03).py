@@ -1,6 +1,6 @@
 import pandas as pd
 import PyLeech.Utils.AbfExtension as abfe
-import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.unitInfo as bStorerLoader
 import PyLeech.Utils.burstUtils as burstUtils
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
 from pandas.plotting import scatter_matrix
@@ -276,7 +276,7 @@ def on_move(ax_list, event):
 
 
 if __name__ == "__main__":
-    fn = "RegistrosDP_PP\\2018_12_03_0005.pklspikes"
+    fn = "RegistrosDP_PP/2018_12_03_0005.pklspikes"
     burst_obj = bStorerLoader(fn, 'RegistrosDP_PP', mode='load')
 
     arr_dict, time, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1'])
@@ -291,7 +291,7 @@ if __name__ == "__main__":
     dt_step = 0.1
     binned_sfd = burstUtils.digitizeSpikeFreqs(burst_obj.spike_freq_dict, dt_step, time[-1], count=False)
 
-    cut_binned_freq_array = burstUtils.binned_spike_freq_dict_ToArray(binned_sfd, crawling_interval, good_neurons)
+    cut_binned_freq_array = burstUtils.binned_sfd_to_dict_array(binned_sfd, crawling_interval, good_neurons)
 
 
     sigma = .5

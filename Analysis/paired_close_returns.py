@@ -1,6 +1,6 @@
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
 import PyLeech.Utils.burstUtils
-from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
+from PyLeech.Utils.unitInfo import UnitInfo
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,7 +22,7 @@ if __name__ == "__main__":
         if cdd[fn]['skipped'] or cdd[fn]["DE3"] is None or cdd[fn]["DE3"] == -1: continue
         ran_files.append(os.path.splitext(os.path.basename(fn))[0])
         run_dict[os.path.splitext(os.path.basename(fn))[0]] = i
-        burst_object = BurstStorerLoader(fn, 'RegistrosDP_PP', 'load')
+        burst_object = UnitInfo(fn, 'RegistrosDP_PP', 'load')
         burst_object.isDe3 = cdd[fn]["DE3"]
 
         binning_dt = 0.1

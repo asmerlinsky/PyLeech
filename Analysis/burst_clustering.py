@@ -1,6 +1,6 @@
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
 import PyLeech.Utils.burstUtils
-from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
+from PyLeech.Utils.unitInfo import UnitInfo
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,7 +17,7 @@ if __name__ == "__main__":
     fn = file_list[5]
     print(fn)
 
-    burst_object = BurstStorerLoader(fn, 'RegistrosDP_PP', 'load')
+    burst_object = UnitInfo(fn, 'RegistrosDP_PP', 'load')
 
     binning_dt = 0.1
     spike_kernel_sigma = .7

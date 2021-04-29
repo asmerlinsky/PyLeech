@@ -10,6 +10,7 @@ import scipy.signal as spsig
 from PyLeech.Utils import spikeUtils as spikeUtils
 from PyLeech.Utils.constants import nan
 from copy import deepcopy
+import warnings
 
 
 def getInstFreq(time, spike_dict, fs):
@@ -47,25 +48,28 @@ def removeOutliers(spike_freq_dict, outlier_threshold=3.5):
     return no_outlier_sfd
 
 
-def digitizeSpikeFreqs(spike_freq_dict, step, num, time_length=None, counting=False, freq_threshold=150):
+def digitizeSpikeFreqs(spike_freq_dict, step, num, time_length=None, counting=False, freq_threshold=None):
     if time_length is None:
         time_length = max([items[1].max() for key, items in spike_freq_dict.items()])
     """ Always returns full binning
     If count is set to True, it will return spike count by bin.
     If false, it will return mean freq"""
 
-    rg = np.linspace(0, time_length, num)
-    # print(rg.shape)
+    rg = np.linspace(0, time_length, num, endpoint=False)
+
     binned_spike_freq_dict = {}
     freqs = np.zeros(len(rg))
+
     for key, item in spike_freq_dict.items():
         freqs[:] = 0
         times = np.array(item[0])
-        freqs_arr = np.array(item[1])
 
-        times = times[freqs_arr < freq_threshold]
-        freqs_arr = freqs_arr[freqs_arr < freq_threshold]
-        digitalization = np.digitize(times, rg + step / 2)
+        freqs_arr = np.array(item[1])
+        if freq_threshold is not None:
+            times = times[freqs_arr < freq_threshold]
+            freqs_arr = freqs_arr[freqs_arr < freq_threshold]
+
+        digitalization = np.digitize(times, rg) - 1
 
         uid = np.unique(digitalization)
         if not counting:
@@ -73,7 +77,7 @@ def digitizeSpikeFreqs(spike_freq_dict, step, num, time_length=None, counting=Fa
             for i in uid:
                 # freqs[i] = 1 / np.mean(1 / freqs_arr[np.where(digitalization == i)[0]])
                 bin_idxs = np.where(digitalization == i)[0]
-                if bin_idxs.size>1:
+                if bin_idxs.size > 1:
                     isi = np.mean(np.diff(times[bin_idxs]))
                     freqs[i] = 1 / isi
                 elif bin_idxs.size == 1:
@@ -87,10 +91,29 @@ def digitizeSpikeFreqs(spike_freq_dict, step, num, time_length=None, counting=Fa
 
         else:
             freqs = np.bincount(digitalization, minlength=len(freqs))
+            if counting == 'bool':
+                freqs[freqs != 0] = 1
 
-        binned_spike_freq_dict[key] = np.array([rg[:], deepcopy(freqs)])
+        if (counting == 'bool') and ((freqs == 0).sum() <15):
+            pass
+        else:
+            binned_spike_freq_dict[key] = np.array([rg[:], deepcopy(freqs)])
 
     return binned_spike_freq_dict
+
+
+def digitizeSpikeTimes(spike_times, step, time_length, counting=False):
+    rg = np.arange(0, time_length, step)
+
+    times = np.array(spike_times)
+    digitalization = np.digitize(times, rg) - 1
+    uid = np.unique(digitalization)
+    if not counting:
+        counts = np.zeros(len(rg))
+        counts[uid] = 1
+        return counts
+    else:
+        return rg, np.bincount(digitalization, minlength=len(rg))
 
 
 def getSpISIdictFromSpFreqdict(spike_freq_dict):
@@ -120,9 +143,8 @@ def getNonZeroIdxs(trace, threshold):
     jumps = np.append(jumps, jumps + 1)
     return np.sort(non_zero_idxs[jumps[1:-1]])
 
+
 # def getNonZeroIntervals(edge_idxs):
-
-
 
 
 def plotDataPredictionAndResult(time, data, pred):
@@ -163,7 +185,7 @@ def plot_data_list(data_list,
                be of the same length (not checked).
     time_axes: an array with as many elements as the components of
                data_list. The time values of the abscissa.
-    linewidth: the width of the lines drawing the curves.
+    linewidth: set the plot linewidths.
     signal_color: the color of the curves.
 
     Returns
@@ -235,9 +257,10 @@ def plot_detection(data_list,
                                        data_list[i][evts_pos], marker='o')
 
 
-def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dict=None, scatter_plot=True,
-             single_figure=False,
-             skip_list=None, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None, facecolor='lightgray', legend=True):
+def plotFreq(spike_freq_dict, color_dict=None, label_dict=None, optional_trace=None, template_dict=None,
+             scatter_plot=True,
+             single_figure=False, skip_list=None, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None,
+             facecolor='lightgray', legend=True):
     """Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
 
             Parameters
@@ -256,14 +279,27 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
         skip_list = []
     if draw_list is None:
         draw_list = list(spike_freq_dict.keys())
-        if color_dict is None:
-            keys = [key for key in list(spike_freq_dict) if (key in draw_list) and (key not in skip_list)]
-            keys.sort()
-            color_dict = setGoodColors(keys)
-        elif (color_dict is 'single_color') or (color_dict is 'k'):
-            color_dict = {key: 'k' for key in spike_freq_dict.keys()}
+    if color_dict is None:
+        keys = [key for key in list(spike_freq_dict) if (key in draw_list) and (key not in skip_list)]
+        keys.sort()
+        color_dict = setGoodColors(keys)
+    elif (color_dict is 'single_color') or (color_dict is 'k'):
+        color_dict = {key: 'k' for key in spike_freq_dict.keys()}
+    elif color_dict is 'jet':
+        if not scatter_plot:
+            warnings.wanr('time coloured function only works with scatter plots\nSetting to scatter plot')
+            scatter_plot = True
+        # N = 21
+        cmap = plt.cm.jet
+        # norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
+        # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        # sm.set_array([])
 
+        data_len = spike_freq_dict[list(spike_freq_dict)[0]][1].shape[0]
+        color_dict = {key: cmap(np.linspace(0, 1, data_len)) for key in spike_freq_dict.keys()}
 
+    if label_dict is not None:
+        color_dict = {key: color_dict[mapped_key] for key, mapped_key in label_dict.items()}
     fig = plt.figure(figsize=(12, 6))
     fig.tight_layout()
     ax_list = []
@@ -285,7 +321,10 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
             else:
                 mask = (items[1] > thres[0]) & (items[1] < thres[1])
 
-            label = str(key)
+            if label_dict is None:
+                label = key
+            else:
+                label = label_dict[key]
             if template_dict is not None:
                 try:
 
@@ -317,7 +356,12 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
             if scatter_plot:
                 ax.scatter(data0, data1, color=color_dict[key], label=label, s=ms)
             else:
-                ax.plot(data0, data1, color=color_dict[key], label=label, ms=ms)
+
+                if (type(color_dict[key]) is str) or (type(color_dict[key]) is tuple):
+                    ax.plot(data0, data1, color=color_dict[key], label=label, ms=ms)
+                elif type(color_dict[key]) is list:
+                    ax.plot(data0, data1, color=color_dict[key][0], label=label, ms=ms)
+
             # ax.legend()
             ax.grid(linestyle='dotted')
             removeTicksFromAxis(ax, 'x')
@@ -338,18 +382,257 @@ def plotFreq(spike_freq_dict, color_dict=None, optional_trace=None, template_dic
         else:
             ax = fig.add_subplot(j, 1, i, sharex=ax, label=i)
 
-
         ax.plot(optional_trace[0], optional_trace[1], color='k', lw=1)
+        ax.grid(linestyle='dotted')
+
         ax_list.append(ax)
-    ax.grid(linestyle='dotted')
+
     #    removeTicksFromAxis(ax, 'y')
     showTicksFromAxis(ax, 'x')
     return fig, ax_list
 
+
+def plotFreqByNerve(spike_freq_dict, color_dict=None, label_dict=None, nerve_unit_dict=None,
+                    scatter_plot=True, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None, De3=None,
+                    facecolor='lightgray', legend=True):
+    """Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
+
+            Parameters
+            ----------
+            spike_freq_dict: a dictionary of the different clusters pointing to a list of two np arrays(time, freq)
+            color_dict: a dictionary of clusters containing its corresponding color sequence
+            optional_trace: list of time, trace desired to add to the graph (for example [time_vector, NS neuron trace])
+
+            Returns
+            -------
+            Nothing is returned, the function is used for its side effect: a
+            plot is generated.
+            """
+
+    if color_dict is None:
+        keys = [key for key in list(spike_freq_dict) if (key in draw_list)]
+        keys.sort()
+        color_dict = setGoodColors(keys)
+    elif (color_dict is 'single_color') or (color_dict is 'k'):
+        color_dict = {key: 'k' for key in spike_freq_dict.keys()}
+    elif color_dict is 'jet':
+        if not scatter_plot:
+            warnings.warn('time coloured function only works with scatter plots\nSetting to scatter plot')
+            scatter_plot = True
+        # N = 21
+        cmap = plt.cm.jet
+        # norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
+        # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        # sm.set_array([])
+
+        data_len = spike_freq_dict[list(spike_freq_dict)[0]][1].shape[0]
+        color_dict = {key: cmap(np.linspace(0, 1, data_len)) for key in spike_freq_dict.keys()}
+
+    if label_dict is not None:
+        color_dict = {key: color_dict[mapped_key] for key, mapped_key in label_dict.items()}
+
+    fig_dict = {}
+
+    for nerve, units in nerve_unit_dict.items():
+
+        unit_list = units[:, 0].astype(int)
+
+        i = 1
+        if draw_list is not None:
+            j = min(len([elem for elem in unit_list if elem in draw_list]), len(list(spike_freq_dict)))
+        else:
+            j = unit_list.shape[0]
+
+        fig = plt.figure(figsize=(12, 6))
+        fig.tight_layout()
+        ax_list = []
+
+        for unit in unit_list:
+
+            if (unit in draw_list) and (unit in list(spike_freq_dict)):
+
+                if thres is None:
+                    mask = [True] * len(spike_freq_dict[unit][1])
+                else:
+                    mask = (spike_freq_dict[unit][1] > thres[0]) & (spike_freq_dict[unit][1] < thres[1])
+
+                if label_dict is None:
+                    label = str(unit)
+                else:
+                    label = str(label_dict[unit])
+                if De3 is not None and int(label) == De3:
+                    label = 'De3'
+                data0 = spike_freq_dict[unit][0][mask]
+                data1 = spike_freq_dict[unit][1][mask]
+                if outlier_thres is not None:
+                    data0 = data0[~is_outlier(data1, outlier_thres)]
+                    data1 = data1[~is_outlier(data1, outlier_thres)]
+
+                if sharex is not None:
+                    ax = fig.add_subplot(j, 1, i, sharex=sharex, label=i)
+                elif i == 1:
+                    ax = fig.add_subplot(j, 1, i, label=i)
+                else:
+                    ax = fig.add_subplot(j, 1, i, sharex=ax, label=i)
+
+                if scatter_plot:
+                    ax.scatter(data0, data1, color=color_dict[unit], label=label, s=ms)
+                else:
+
+                    if (type(color_dict[unit]) is str) or (type(color_dict[unit]) is tuple):
+                        ax.plot(data0, data1, color=color_dict[unit], label=label, ms=ms)
+                    elif type(color_dict[unit]) is list:
+                        ax.plot(data0, data1, color=color_dict[unit][0], label=label, ms=ms)
+
+                ax.grid(linestyle='dotted')
+                removeTicksFromAxis(ax, 'x')
+                ax.set_facecolor(facecolor)
+                if legend:
+                    ax.legend()
+
+                i += 1
+
+                ax_list.append(ax)
+
+        fig.suptitle(nerve)
+
+        ax.grid(linestyle='dotted')
+        showTicksFromAxis(ax, 'x')
+        fig_dict[nerve] = (fig, ax_list)
+
+    return fig_dict
+
+
+def plotCorrByNerve(corr_dict, color_dict=None, label_dict=None, nerve_unit_dict=None,
+                    scatter_plot=True, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None, De3=None,
+                    burst_info=None, facecolor='lightgray', legend=True):
+    """Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
+
+            Parameters
+            ----------
+            corr_dict: a dictionary of the different clusters pointing to a list of two np arrays(time, freq)
+            color_dict: a dictionary of clusters containing its corresponding color sequence
+            optional_trace: list of time, trace desired to add to the graph (for example [time_vector, NS neuron trace])
+
+            Returns
+            -------
+            Nothing is returned, the function is used for its side effect: a
+            plot is generated.
+            """
+
+    if color_dict is None:
+        keys = [key for key in list(corr_dict) if (key in draw_list)]
+        keys.sort()
+        color_dict = setGoodColors(keys)
+    elif (color_dict is 'single_color') or (color_dict is 'k'):
+        color_dict = {key: 'k' for key in corr_dict.keys()}
+    elif color_dict is 'jet':
+        if not scatter_plot:
+            warnings.warn('time coloured function only works with scatter plots\nSetting to scatter plot')
+            scatter_plot = True
+        # N = 21
+        cmap = plt.cm.jet
+        # norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
+        # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        # sm.set_array([])
+
+        data_len = corr_dict[list(corr_dict)[0]][1].shape[0]
+        color_dict = {key: cmap(np.linspace(0, 1, data_len)) for key in corr_dict.keys()}
+
+    if label_dict is not None:
+        color_dict = {key: color_dict[mapped_key] for key, mapped_key in label_dict.items()}
+
+    fig_dict = {}
+
+    for nerve, units in nerve_unit_dict.items():
+        unit_list = units[:, 0].astype(int)
+
+        i = 1
+
+        j = len([elem for elem in unit_list if elem in list(corr_dict)])
+
+        if j > 0:
+            if burst_info is not None:
+                j += 2
+
+            fig = plt.figure(figsize=(12, 6))
+            fig.tight_layout()
+            ax_list = []
+
+            for unit in unit_list:
+                if unit in list(corr_dict):
+                    if thres is None:
+                        mask = [True] * len(corr_dict[unit][1])
+                    else:
+                        mask = (corr_dict[unit][1] > thres[0]) & (corr_dict[unit][1] < thres[1])
+
+                    if label_dict is None:
+                        label = str(unit)
+                    else:
+                        label = str(label_dict[unit])
+                    if De3 is not None and int(label) == De3:
+                        label = 'De3'
+                    data0 = corr_dict[unit][0][mask]
+                    data1 = corr_dict[unit][1][mask]
+                    if outlier_thres is not None:
+                        data0 = data0[~is_outlier(data1, outlier_thres)]
+                        data1 = data1[~is_outlier(data1, outlier_thres)]
+
+                    if sharex is not None:
+                        ax = fig.add_subplot(j, 1, i, sharex=sharex, label=i)
+                    elif i == 1:
+                        ax = fig.add_subplot(j, 1, i, label=i)
+                    else:
+                        ax = fig.add_subplot(j, 1, i, sharex=ax, label=i)
+
+                    if scatter_plot:
+                        ax.scatter(data0, data1, color=color_dict[unit], label=label, s=ms)
+                    else:
+
+                        if (type(color_dict[unit]) is str) or (type(color_dict[unit]) is tuple):
+                            ax.plot(data0, data1, color=color_dict[unit], label=label, ms=ms)
+                        elif type(color_dict[unit]) is list:
+                            ax.plot(data0, data1, color=color_dict[unit][0], label=label, ms=ms)
+
+                    ax.grid(linestyle='dotted')
+                    removeTicksFromAxis(ax, 'x')
+                    ax.set_facecolor(facecolor)
+                    if legend:
+                        ax.legend()
+
+                    i += 1
+
+                    ax_list.append(ax)
+            if burst_info is not None:
+                if sharex is not None:
+                    ax = fig.add_subplot(j, 1, i, sharex=sharex, label=i)
+                    ax1 = fig.add_subplot(j, 1, i+1, sharex=sharex, label=i)
+                else:
+                    ax = fig.add_subplot(j, 1, i, sharex=ax, label=i)
+                    ax1 = fig.add_subplot(j, 1, i+1, sharex=ax, label=i)
+
+                ax.scatter(burst_info["burst median time"][:-1], burst_info["cycle period"], label='DP cycle period', s=ms)
+                ax1.scatter(burst_info["burst median time"][:-1], burst_info["burst duty cycle"], label='DP duty cycle', s=ms)
+                ax_list.append(ax)
+                ax_list.append(ax1)
+                if legend:
+                    ax.legend()
+                    ax1.legend()
+
+                ax.grid(linestyle='dotted')
+                ax1.grid(linestyle='dotted')
+                removeTicksFromAxis(ax, 'x')
+                # showTicksFromAxis(ax1, 'x')
+            fig.suptitle(nerve)
+            showTicksFromAxis(ax_list[-1], 'x')
+            fig_dict[nerve] = (fig, ax_list)
+
+    return fig_dict
+
+
 def removeTicksFromAxis(ax, axis='y'):
     axis = getattr(ax, axis + 'axis')
     for tic in axis.get_major_ticks():
-
         tic.label1.set_visible(False)
         tic.label2.set_visible(False)
 
@@ -363,10 +646,8 @@ def removeTicksFromAxis(ax, axis='y'):
 def showTicksFromAxis(ax, axis='y'):
     axis = getattr(ax, axis + 'axis')
     for tic in axis.get_major_ticks():
-
         tic.label1.set_visible(True)
         tic.tick1line.set_visible(True)
-
 
 
 def saveSpikeResults(filename, json_dict):
@@ -381,7 +662,6 @@ def loadSpikeResults(filename):
 
     with open(filename, 'rb') as pfile:
         results = pickle.load(pfile)
-
 
     return results
 
@@ -445,9 +725,11 @@ def checkBurstWithin(times_list, min_spike_no, min_spike_per_sec):
 
         for j in range(i + min_spike_no, len(times_list)):
 
-            if not checkBurst(times_list[i:j + 1], min_spike_no, min_spike_per_sec) and checkBurst(times_list[i:j],
-                                                                                                   min_spike_no,
-                                                                                                   min_spike_per_sec):
+            if not checkBurst(times_list[i:j + 1],
+                              min_spike_no,
+                              min_spike_per_sec) and checkBurst(times_list[i:j],
+                                                                min_spike_no,
+                                                                min_spike_per_sec):
 
                 bursts.append(times_list[i:j])
                 i = j
@@ -551,11 +833,12 @@ def spike_freq_dictToDataFrame(sfd):
     return df
 
 
-def binned_spike_freq_dict_ToArray(sfd, time_interval=None, good_neurons=None):
+def binned_sfd_to_dict_array(sfd, time_interval=None, good_neurons=None):
     new_sfd = {}
     first_key = list(sfd)[0]
     if time_interval is not None:
         if type(time_interval[0]) is list:
+
             mask = np.zeros(len(sfd[first_key][0]), dtype=bool)
 
             for interval in time_interval:
@@ -563,8 +846,10 @@ def binned_spike_freq_dict_ToArray(sfd, time_interval=None, good_neurons=None):
                 mask[idxs] = 1
 
         else:
+
             mask = (sfd[first_key][0] > time_interval[0]) & (sfd[first_key][0] < time_interval[1])
     else:
+
         mask = np.ones(sfd[first_key][0].shape[0], dtype=bool)
 
     for key, items in sfd.items():
@@ -574,8 +859,9 @@ def binned_spike_freq_dict_ToArray(sfd, time_interval=None, good_neurons=None):
     return new_sfd
 
 
-def processSpikeFreqDict(spike_freq_dict, step, num=None, outlier_threshold=3.5, selected_neurons=None, time_length=None,
-                         time_interval=None, counting=False, freq_threshold=200):
+def processSpikeFreqDict(spike_freq_dict, step, num=None, outlier_threshold=3.5, selected_neurons=None,
+                         time_length=None,
+                         time_interval=None, counting=False, freq_threshold=None):
     """
 
     :param spike_freq_dict:
@@ -584,24 +870,39 @@ def processSpikeFreqDict(spike_freq_dict, step, num=None, outlier_threshold=3.5,
     :rtype: dict
     """
     if num is None:
-        num = int(time_length/step)
+        num = int(time_length / step)
+        time_length -= time_length % step
 
     new_sfd = removeOutliers(spike_freq_dict, outlier_threshold=outlier_threshold)
+
     new_sfd = digitizeSpikeFreqs(new_sfd, step=step, num=num, time_length=time_length, counting=counting,
                                  freq_threshold=freq_threshold)
-    return binned_spike_freq_dict_ToArray(new_sfd, time_interval=time_interval, good_neurons=selected_neurons)
+
+    return binned_sfd_to_dict_array(new_sfd, time_interval=time_interval, good_neurons=selected_neurons)
 
 
-def saveSpikeFreqDictToBinnedMat(spike_freq_dict, step, filename, num=None, outlier_threshold=3.5, selected_neurons=None, time_length=None,
-                         time_interval=None, counting=False, freq_threshold=200):
-    binned_sfd = processSpikeFreqDict(spike_freq_dict, step=step, num=num, outlier_threshold=outlier_threshold, selected_neurons=selected_neurons, time_length=time_length,
-                         time_interval=time_interval, counting=counting, freq_threshold=freq_threshold)
+def cutSpikeFreqDict(spike_freq_dict, time_interval, outlier_threshold=3.5):
+    new_sfd = {}
+    for key, items in spike_freq_dict.items():
+        mask = (items[0] > time_interval[0]) & (items[0] < time_interval[1])
+        outlier_mask = ~is_outlier(items[1], thresh=outlier_threshold)
+        new_sfd[key] = [items[0][mask & outlier_mask], items[1][mask & outlier_mask]]
+    return new_sfd
+
+
+def saveSpikeFreqDictToBinnedMat(spike_freq_dict, step, filename, num=None, outlier_threshold=3.5,
+                                 selected_neurons=None, time_length=None,
+                                 time_interval=None, counting=False, freq_threshold=None):
+    binned_sfd = processSpikeFreqDict(spike_freq_dict, step=step, num=num, outlier_threshold=outlier_threshold,
+                                      selected_neurons=selected_neurons, time_length=time_length,
+                                      time_interval=time_interval, counting=counting, freq_threshold=freq_threshold)
     burst_array = []
     for key, items in binned_sfd.items():
         burst_array.append(items[1])
     burst_array = np.array(burst_array).T
     filename = os.path.splitext(filename)[0]
     pd.DataFrame(burst_array, columns=list(binned_sfd)).to_csv(filename + '.csv', index=False)
+
 
 def saveBinnedSfdToBinnedMat(binned_sfd, filename):
     burst_array = []
@@ -611,7 +912,7 @@ def saveBinnedSfdToBinnedMat(binned_sfd, filename):
     filename = os.path.splitext(filename)[0] + '.csv'
     print('Saving in %s' % filename)
     pd.DataFrame(burst_array, columns=list(binned_sfd)).to_csv(filename, index=False)
-    
+
 
 def generateBurstSegmentsFromManyNeurons(smoothed_sfd, intervals_dict):
     burst_list = []
@@ -625,7 +926,9 @@ def generateBurstSegmentsFromManyNeurons(smoothed_sfd, intervals_dict):
                 max_len = len(segment)
             target_neuron.append(key)
 
-    return np.array([spsig.resample(burst * len(burst)/max_len, max_len) for burst in burst_list]), np.array(target_neuron)
+    return np.array([spsig.resample(burst * len(burst) / max_len, max_len) for burst in burst_list]), np.array(
+        target_neuron)
+
 
 def resampleSegmentList(segment_list):
     max_len = 0
@@ -633,7 +936,7 @@ def resampleSegmentList(segment_list):
         if len(segment) > max_len:
             max_len = len(segment)
 
-    return np.array([spsig.resample(segment * segment.shape[0]/max_len, max_len) for segment in segment_list])
+    return np.array([spsig.resample(segment * segment.shape[0] / max_len, max_len) for segment in segment_list])
 
 
 def segment_listToDataFrame(segment_list):
@@ -801,14 +1104,32 @@ def resampleArrayList(arr_list1, arr_list2):
 def generateGaussianKernel(sigma, time_range, dt_step):
     sigma = sigma
     time_range = time_range
-    x_range = np.arange(-time_range, time_range, dt_step)
+    x_range = np.arange(-time_range, time_range + dt_step, dt_step)
     gaussian = np.exp(-(x_range / sigma) ** 2)
     gaussian /= gaussian.sum()
     return gaussian
 
+
 def smoothBinnedSpikeFreqDict(binned_sfd, sigma, time_range, dt_step):
     smoothed_sfd = {}
     kernel = generateGaussianKernel(sigma=sigma, time_range=time_range, dt_step=dt_step)
+
     for key, items in binned_sfd.items():
-        smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])
+        smoothed_sfd[key] = np.array([items[0], spsig.convolve(items[1], kernel, mode='same', method='direct')])
+
     return smoothed_sfd
+
+
+def sfdToArray(spike_freq_dict):
+    burst_array = []
+    for key, items in spike_freq_dict.items():
+        burst_array.append(spike_freq_dict[key][1])
+
+    return np.array(burst_array).T
+
+
+def processed_sfd_to_array(processed_sfd):
+    burst_array = []
+    for key, items in processed_sfd.items():
+        burst_array.append(processed_sfd[key][1])
+    return np.array(burst_array).T

@@ -1,6 +1,6 @@
 import PyLeech.Utils.NLDUtils as NLD
 import PyLeech.Utils.AbfExtension as abfe
-import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.unitInfo as bStorerLoader
 import PyLeech.Utils.burstUtils
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 
 
-fn = "RegistrosDP_PP\\DE3_DP_DP.abf"
+fn = "RegistrosDP_PP/DE3_DP_DP.abf"
 
 arr_dict, time_vector, fs = abfe.getArraysFromAbfFiles([fn], ['Vm1'])
 DE3 = arr_dict['Vm1']

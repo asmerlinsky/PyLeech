@@ -100,7 +100,7 @@ if __name__ == '__main__':
         neuron_par_area_freq = []
         neuron_par_dpmatch_freq = []
 
-        files = glob.glob(dirname + '\\' + key + '.*.abf')
+        files = glob.glob(dirname + '/' + key + '.*.abf')
 
         for file in files:
 
@@ -145,7 +145,7 @@ if __name__ == '__main__':
             # plt.figure(1)
             if plot_traces_and_segments:
                 fig, ax = plt.subplots(2, 1, figsize=(16, 8), sharex=True)
-                fig.suptitle(file.split('\\')[1])
+                fig.suptitle(file.split('/')[1])
                 T_DP_classes.plotBursts(ax[0], time, T_obj)
 
                 T_DP_classes.plotBursts(ax[1], time, DP_obj)

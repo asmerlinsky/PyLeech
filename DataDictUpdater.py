@@ -13,5 +13,5 @@ if __name__ == "__main__":
     if len(sys.argv)>1:
         CDU.newEntryToDataDict(sys.argv[1:])
     else:
-        pkl_files = glob.glob('RegistrosDP_PP/*.pklspikes')
+        pkl_files = [fn.replace("\\", "/") for fn in glob.glob('RegistrosDP_PP/*.pklspikes')]
         CDU.newEntryToDataDict(pkl_files)

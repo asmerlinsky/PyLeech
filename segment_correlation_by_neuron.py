@@ -14,7 +14,7 @@ Finally clusters them by correlation
 
 import PyLeech.Utils.burstClasses as burstClasses
 import PyLeech.Utils.AbfExtension as abfe
-from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
+from PyLeech.Utils.unitInfo import UnitInfo
 import PyLeech.Utils.burstUtils as burstUtils
 import PyLeech.Utils.abfUtils as abfUtils
 import matplotlib.pyplot as plt
@@ -36,10 +36,13 @@ if __name__ == "__main__":
     file_list = list(cdd.keys())
     fn = file_list[5]
 
-    burst_object = BurstStorerLoader(fn, 'ResgistrosDP_PP', 'load')
+    burst_object = UnitInfo(fn, 'ResgistrosDP_PP', 'load')
     arr_dict, time_vector, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1', 'IN6'])
     # dp_trace = arr_dict['IN6']
     NS = arr_dict['Vm1']
+
+
+
     del arr_dict
 
     good_neurons = [neuron for neuron, neuron_dict in cdd[fn]['neurons'].items() if neuron_dict['neuron_is_good']]
@@ -101,7 +104,7 @@ from sklearn.metrics import consensus_score
 
 i = 18
 scores = []
-for i in range(3, 10):
+for i in [3]:
     model = SpectralCoclustering(n_clusters=i, random_state=0)
     model.fit(corr_mat)
     score = consensus_score(model.biclusters_,
@@ -114,7 +117,7 @@ for i in range(3, 10):
     fit_data = fit_data[:, np.argsort(model.column_labels_)]
 
     # plt.matshow(fit_data, cmap=plt.cm.Blues)
-    plt.matshow(fit_data)
+    plt.matshow(fit_data, vmin=-1, vmax=1, cmap='bwr')
     plt.colorbar()
     plt.gca().set_aspect('auto')
     plt.title(str(i))

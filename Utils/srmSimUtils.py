@@ -14,10 +14,38 @@ def generateStepFunction(period, amplitude=1, duty_cycle=0.5):
     return np.vectorize(lambda x: 0 if (((x % period) / period) < (1 - duty_cycle)) else amplitude)
 
 
+def randomizePoissonSpiking(seed=1, amp=1, size=1000, min_isi=.01, max_isi=1, time_points=np.arange(0, 1, .001)):
+    if amp == 'gaussian':
+        random_amp = True
+        amp = 1
+    else:
+        random_amp = False
+    np.random.seed(seed)
+    dt = time_points[1]
+    min_isi = int(min_isi / dt)
+    max_isi = int(max_isi / dt)
+    len = time_points.shape[0]
+    spikes = np.zeros(len)
+    idx = 0
+    while idx < len:
+        i = 0
+        bin_dist = np.random.poisson(lam=np.random.uniform(min_isi, max_isi, size=size), size=size)
+        while i < bin_dist.shape[0]:
+
+            idx += bin_dist[i]
+            i += 1
+            try:
+                spikes[idx] = amp
+            except IndexError as e:
+                i = bin_dist.shape[0]
+    if random_amp:
+        spikes[spikes == 1] = spikes[spikes == 1] * np.random.normal(1, .2, size=int(spikes.sum()))
+    return spikes
+
 class SRMSingleNeuronSimulator():
 
     def __init__(self, dt=0.0001, sim_length=15, no_sim=1, beta=2, u_rest_minus_V=-5, k_length=None, k_func=None,
-                 ref_length=None, ref_func=None, current_function=None, test=False):
+                 ref_length=None, ref_func=None, current_function=None, test=False, dim_red=1):
 
         if test:
             self.testSimulator()
@@ -25,13 +53,14 @@ class SRMSingleNeuronSimulator():
         self.dt = dt
         self.sim_length = sim_length
         self.time_steps = np.arange(0, self.sim_length, self.dt)
-
+        self.dim_red = dim_red
         self.no_sim = no_sim
         self.k_length = int(k_length / dt)
         self.generate_k_filter(k_func)
 
         self.ref_length = int(ref_length / dt)
         self.generate_ref_filter(ref_func)
+
         self.generate_input_current(current_function)
 
         self.u_sim = np.zeros(int(sim_length / dt))
@@ -57,13 +86,19 @@ class SRMSingleNeuronSimulator():
                             current_function=stim)
 
     def generate_k_filter(self, k_func):
-        self.k_filter = k_func(self.time_steps[:self.k_length])
+        if callable(k_func):
+            self.k_filter = k_func(self.time_steps[:self.k_length])
+        else:
+            self.k_filter = np.repeat(k_func, self.dim_red)
 
     def generate_ref_filter(self, ref_func):
         self.ref_filter = ref_func(self.time_steps[:self.ref_length])
 
     def generate_input_current(self, current_function):
-        self.input_current = current_function(self.time_steps)
+        if callable(current_function):
+            self.input_current = current_function(self.time_steps)
+        else:
+            self.input_current = current_function
 
     def runSimulation(self):
         self.k_conv_i = spsig.fftconvolve(self.input_current, self.k_filter) * self.dt
@@ -135,7 +170,7 @@ class SRMMultiNeuronSimulator():
     
     """
 
-    def __init__(self, dt=0.0001, sim_length=15, no_sim=1, k_length=2, ref_length=2, **kwargs):
+    def __init__(self, dt=0.0001, sim_length=15, no_sim=1, k_length=2, ref_length=2, verbose=False, **kwargs):
 
         self.dt = dt
         self.sim_length = sim_length
@@ -185,6 +220,8 @@ class SRMMultiNeuronSimulator():
                     self.connectivity_matrix[i, j * self.ref_length:(j + 1) * self.ref_length] = ref_funcs[j](
                         self.time_steps[:self.ref_length])
 
+        self.verbose = verbose
+
     def runSimulation(self):
         self.k_conv_stim = np.zeros(self.data_size)
         for i in range(self.input_stim.shape[0]):
@@ -197,7 +234,8 @@ class SRMMultiNeuronSimulator():
             self.firing_prob[:] = 0
             for i in range(1, len(self.time_steps)):
                 if self.time_steps[i] % 60 == 0.:
-                    print('Simulated %i min' % (self.time_steps[i]/60))
+                    if self.verbose:
+                        print('Simulated %i min' % (self.time_steps[i]/60))
                 for j in range(self.no_neurons):
                     neuron_ref_mat = self.connectivity_matrix[j].reshape(self.no_neurons, self.ref_length)
 
@@ -240,7 +278,7 @@ class SRMMultiNeuronSimulator():
             ax.plot(self.time_steps, self.u_sim[j], color='k')
             for i in self.time_steps[self.spike_count[-1, j, :].astype(bool)]:
                 ax.axvline(i, color='r')
-            ax.set_ylim([4 * self.u_sim[j, 0], 0])
+            # ax.set_ylim([4 * self.u_sim[j, 0], 0])
             ax.grid()
 
             ax = plt.subplot(3, 1, 3, sharex=ax)
@@ -292,7 +330,7 @@ if __name__ == "__main__":
     u_rest = -15
     neurons = {
         'n1': [u_rest, k_filter1, ref_filter, inh_conn_filter, step1],
-        # 'n2': [u_rest, k_filter2, ref_filter, inh_conn_filter, sincurrent]
+        'n2': [u_rest, k_filter2, ref_filter, inh_conn_filter, sincurrent]
     }
     # for i in range(1):
     #     neurons['n'+str(i)] = [u_rest, k_filter, ref_filter, inh_conn_filter, no_current]

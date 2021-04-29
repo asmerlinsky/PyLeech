@@ -1,4 +1,4 @@
-import PyLeech.Utils.burstStorerLoader
+import PyLeech.Utils.unitInfo
 import PyLeech.Utils.srmFitUtils as FitUtils
 import PyLeech.Utils.abfUtils as abfUtils
 import PyLeech.Utils.burstClasses as burstClasses
@@ -24,7 +24,7 @@ with open('fitter_list.pickle', 'rb') as handle:
 # for filename in filenames:
 #     print(filename)
 #
-#     burst_object = burstClasses.BurstStorerLoader(filename, folder_name, mode='load')
+#     burst_object = burstClasses.UnitInfo(filename, folder_name, mode='load')
 #     basename = abfUtils.getAbfFilenamesfrompklFilename(filename)
 #     arr_dict, time_array, fs = abfe.getArraysFromAbfFiles(basename, ['Vm1'])
 #     NS = arr_dict['Vm1']
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     fitters = []
     processes = []
     for filename in pkl_files[6:8]:
-        burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, folder_name, mode='load')
+        burst_object = PyLeech.Utils.unitInfo.UnitInfo(filename, folder_name, mode='load')
         basename = abfUtils.getAbfFilenamesfrompklFilename(filename)
         arr_dict, time_array, fs = abfe.getArraysFromAbfFiles(basename, ['Vm1'])
         NS = arr_dict['Vm1']
@@ -69,7 +69,7 @@ if __name__ == "__main__":
         spike_times_dict = FitUtils.substractTimes(spike_times_dict, time_array[first_idx])
 
         part_args = (time_delta, NS, spike_times_dict, 30, 30, 1, filename, first_idx, last_idx,
-                     [FitUtils.penalizedNegLogLikelihood, FitUtils.gradPenalizedNegLogLikelihood], fs)
+                     [FitUtils.multiNeuronPenalizedNegLogLikelihood, FitUtils.multiNeurongradPenalizedNegLogLikelihood], fs)
 
         func = partial(FitUtils.runCrawlingFitter, *part_args)
         with multiprocessing.Pool(processes=(multiprocessing.cpu_count() - 1)) as p:

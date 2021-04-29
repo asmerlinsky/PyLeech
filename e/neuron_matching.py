@@ -3,7 +3,7 @@
 import sys
 import os
 
-import PyLeech.Utils.burstStorerLoader
+import PyLeech.Utils.unitInfo
 
 if os.getcwd() not in sys.path:
     sys.path.append(os.getcwd())
@@ -31,7 +31,7 @@ pkl_files = glob.glob('RegistrosDP_PP/*.pklspikes')
 for j in range(len(pkl_files)):
     print(j, pkl_files[j])
     filename = pkl_files[j]
-    burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, 'load')
+    burst_object = PyLeech.Utils.unitInfo.UnitInfo(filename, 'load')
     # burst_object.plotTemplates()
     # burst_object.isDe3 = 0
     #
@@ -192,18 +192,18 @@ pkl_files = glob.glob('RegistrosDP_PP/*.pklspikes')
 reload(burstUtils)
 reload(abfe)
 filename = pkl_files[7]
-burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, 'load')
+burst_object = PyLeech.Utils.unitInfo.UnitInfo(filename, 'load')
 fig_ax = burst_object.plotTemplates(signal_inversion=[1, -1])
 
 filename = pkl_files[6]
-burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, 'load')
+burst_object = PyLeech.Utils.unitInfo.UnitInfo(filename, 'load')
 burst_object.plotTemplates(fig_ax=fig_ax)
 
 
 for j in range(len(pkl_files)):
     # print(j, pkl_files[j])
     filename = pkl_files[j]
-    burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, 'load')
+    burst_object = PyLeech.Utils.unitInfo.UnitInfo(filename, 'load')
 
     basename = abfUtils.getAbfFilenamesfrompklFilename(burst_object.filename)
     if basename:

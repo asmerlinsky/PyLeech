@@ -5,7 +5,7 @@ import numpy as np
 import scipy.signal as spsig
 import PyLeech.Utils.AbfExtension as abfe
 import PyLeech.Utils.burstUtils
-from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
+from PyLeech.Utils.unitInfo import UnitInfo
 import PyLeech.Utils.filterUtils as filterUtils
 import PyLeech.Utils.burstUtils as burstUtils
 
@@ -20,10 +20,10 @@ if __name__ == "__main__":
 
     cdd = CDU.loadDataDict()
 
-    del cdd["RegistrosDP_PP\\NS_DP_PP_0.pklspikes"]
-    del cdd["RegistrosDP_PP\\NS_T_DP_PP_0_cut.pklspikes"]
-    del cdd["RegistrosDP_PP\\NS_T_DP_PP_1.pklspikes"]
-    del cdd["RegistrosDP_PP\\2019_01_28_0001.pklspikes"]
+    del cdd["RegistrosDP_PP/NS_DP_PP_0.pklspikes"]
+    del cdd["RegistrosDP_PP/NS_T_DP_PP_0_cut.pklspikes"]
+    del cdd["RegistrosDP_PP/NS_T_DP_PP_1.pklspikes"]
+    del cdd["RegistrosDP_PP/2019_01_28_0001.pklspikes"]
 
 
     for fn, data in cdd.items():
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         del arr_dict
 
 
-        burst_object = BurstStorerLoader(fn, 'RegistrosDP_PP', 'load')
+        burst_object = UnitInfo(fn, 'RegistrosDP_PP', 'load')
 
         good_neurons = [neuron for neuron, neuron_dict in data['neurons'].items() if neuron_dict['neuron_is_good']]
 

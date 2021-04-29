@@ -1,6 +1,6 @@
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
 import PyLeech.Utils.burstUtils
-from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
+from PyLeech.Utils.unitInfo import UnitInfo
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
 import matplotlib.pyplot as plt

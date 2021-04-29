@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import PyLeech.Utils.AbfExtension as abfe
 import PyLeech.Utils.burstUtils
-from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
+from PyLeech.Utils.unitInfo import UnitInfo
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
 import PyLeech.Utils.NLDUtils as NLD
@@ -15,7 +15,7 @@ import scipy.signal as spsig
 import matplotlib as mpl
 import os
 from matplotlib import animation
-plt.rcParams['animation.ffmpeg_path'] = "C:\\ffmpeg\\bin\\ffmpeg.exe"
+plt.rcParams['animation.ffmpeg_path'] = "C:/ffmpeg/bin/ffmpeg.exe"
 
 import seaborn as sns
 sns.jointplot()
@@ -34,7 +34,7 @@ if __name__ == "__main__":
         #     continue
         # print(fn)
         try:
-            burst_object = BurstStorerLoader(fn, 'RegistrosDP_PP', 'load')
+            burst_object = UnitInfo(fn, 'RegistrosDP_PP', 'load')
             try:
                 arr_dict, time_vector, fs = abfe.getArraysFromAbfFiles(fn, ["IN5"])
             # except IndexError:
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         elif fn == file_list[0]:
             num = 250
             freq_threshold = 1
-        elif fn == "RegistrosDP_PP\\2018_11_06_0004.pklspikes":
+        elif fn == "RegistrosDP_PP/2018_11_06_0004.pklspikes":
             analized_neuron = 22
         else:
             num = 250

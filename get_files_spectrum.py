@@ -11,7 +11,7 @@ import sys
 
 if True:  # run when starting ipython instance
     sys.path.append(os.getcwd())
-    sys.path.append(os.getcwd() + '\\PyLeech')
+    sys.path.append(os.getcwd() + '/PyLeech')
 
 file_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 wdir = os.path.dirname(file_dir)
@@ -55,7 +55,7 @@ for abf_file in file_list:
             spec[1] = 20 * (np.log10(spec[1]) - np.log10(spec[1][0]))
 
             plt.figure()
-            plt.title(abf_file.split('\\')[1] + ', ' + key)
+            plt.title(abf_file.split('/')[1] + ', ' + key)
             plt.plot(spec[0], spec[1], label='unfiltered')
             plt.grid()
 
@@ -84,7 +84,7 @@ for abf_file in file_list:
             # plt.close()
 
             fig = plt.figure(figsize=(16, 10))
-            fig.suptitle(abf_file.split('\\')[1] + ', ' + key)
+            fig.suptitle(abf_file.split('/')[1] + ', ' + key)
 
             ax1 = fig.add_subplot(3, 1, 1)
             ax2 = fig.add_subplot(3, 1, 2, sharex=ax1)
@@ -101,7 +101,7 @@ for abf_file in file_list:
             '''
             
             fig = plt.figure(figsize=(16,10))
-            fig.suptitle(abf_file.split('\\')[1] + ', ' + key)
+            fig.suptitle(abf_file.split('/')[1] + ', ' + key)
             ax1 = fig.add_subplot(3, 1, 1)
             ax2 = fig.add_subplot(3, 1, 2, sharex=ax1, sharey=ax1)
             ax3 = fig.add_subplot(3, 1, 3, sharex=ax1, sharey=ax1)
@@ -117,7 +117,7 @@ for abf_file in file_list:
             
             
             fig = plt.figure(figsize=(16,10))     
-            fig.suptitle(abf_file.split('\\')[1] + ', ' + key)
+            fig.suptitle(abf_file.split('/')[1] + ', ' + key)
             
             ax1 = fig.add_subplot(3, 1, 1)
             ax2 = fig.add_subplot(3, 1, 2, sharex=ax1)
@@ -143,6 +143,6 @@ for abf_file in file_list:
             ax3.plot(dfiltered)
             ax3.grid()
             
-            print(abf_file.split('\\')[1], np.mean(dfiltered))
+            print(abf_file.split('/')[1], np.mean(dfiltered))
             
             '''

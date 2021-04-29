@@ -14,7 +14,7 @@ Finally clusters them by correlation
 
 import PyLeech.Utils.burstClasses as burstClasses
 import PyLeech.Utils.AbfExtension as abfe
-import PyLeech.Utils.burstStorerLoader
+import PyLeech.Utils.unitInfo
 import PyLeech.Utils.burstUtils as burstUtils
 import PyLeech.Utils.abfUtils as abfUtils
 import matplotlib.pyplot as plt
@@ -37,7 +37,7 @@ for j in range(6, 8):
     filename = pkl_files[j]
     print(filename)
 
-    burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, 'RegistrosDP_PP', mode='load')
+    burst_object = PyLeech.Utils.unitInfo.UnitInfo(filename, 'RegistrosDP_PP', mode='load')
 
     basename = abfUtils.getAbfFilenamesfrompklFilename(filename)
     arr_dict, time, fs = abfe.getArraysFromAbfFiles(basename, ['Vm1'])
@@ -151,7 +151,7 @@ for j in range(6,8):
     filename = pkl_files[j]
     print(filename)
 
-    burst_object = PyLeech.Utils.burstStorerLoader.BurstStorerLoader(filename, 'load')
+    burst_object = PyLeech.Utils.unitInfo.UnitInfo(filename, 'load')
 
     basename = abfUtils.getAbfFilenamesfrompklFilename(filename)
     arr_dict, time, fs = abfe.getArraysFromAbfFiles(basename, ['Vm1'])

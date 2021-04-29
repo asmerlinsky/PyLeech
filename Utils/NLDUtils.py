@@ -1,5 +1,5 @@
 import PyLeech.Utils.AbfExtension as abfe
-import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.unitInfo as bStorerLoader
 import PyLeech.Utils.burstUtils as burstUtils
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
 
@@ -12,7 +12,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.preprocessing import StandardScaler
 import findiff
 import more_itertools as mit
-from numba import jit
+from numba import njit
 
 def generateOutputSpace(binned_spike_freq_dict, fs, intracel_signal=None):
     dt = binned_spike_freq_dict[list(binned_spike_freq_dict)[0]][0, 1] - \
@@ -92,7 +92,7 @@ def getCloseReturns(embedding_space1, embedding_space2=None, get_mask=False, thr
         return dist
 
 
-@jit
+@njit
 def computeSingleDistance(trace1):
     dist = np.zeros((trace1.shape[0], trace1.shape[0]), dtype=np.float32)
     for i in range(dist.shape[0]):
@@ -102,7 +102,7 @@ def computeSingleDistance(trace1):
     return dist
 
 
-@jit
+@njit
 def lowDiagConstant(mat, ct):
     for i in range(mat.shape[1]):
         for j in range(i, mat.shape[0]):
@@ -672,6 +672,7 @@ def on_move(ax_list, event):
     fig.canvas.draw_idle()
 
 
+@njit
 def lorenz(x, y, z, s=10, r=28, b=2.667):
     '''
     Given:
@@ -687,6 +688,7 @@ def lorenz(x, y, z, s=10, r=28, b=2.667):
     return x_dot, y_dot, z_dot
 
 
+@njit
 def rossler(x, y, z, a=.1, b=.1, c=14):
     '''
     Given:
@@ -702,23 +704,59 @@ def rossler(x, y, z, a=.1, b=.1, c=14):
     return x_dot, y_dot, z_dot
 
 
-def simDynamicalSistem(*params, func=lorenz, num_steps=10000, x0=np.array([0., 1., 1.05]), dt=.01):
-    xs = np.empty(num_steps + 1)
-    ys = np.empty(num_steps + 1)
-    zs = np.empty(num_steps + 1)
+@njit
+def simDynamicalSistem(params, func=lorenz, num_steps=10000, x0=np.array([0., 1., 1.05]), dt=.01):
 
-    xs[0], ys[0], zs[0] = x0
-    for i in range(num_steps):
-        x_dot, y_dot, z_dot = func(xs[i], ys[i], zs[i], *params)
-        xs[i + 1] = xs[i] + (x_dot * dt)
-        ys[i + 1] = ys[i] + (y_dot * dt)
-        zs[i + 1] = zs[i] + (z_dot * dt)
+    ns_p1 = num_steps+1
+    xs = np.zeros((ns_p1, 3), dtype=np.float_)
 
-    return np.array((xs, ys, zs)).T
+
+    xs[0] = x0
+
+    if params.ndim == 1:
+        for i in range(num_steps):
+            x_dot, y_dot, z_dot = func(xs[i][0], xs[i][1], xs[i][2], params[0], params[1], params[2])
+            xs[i + 1][0] = xs[i][0] + (x_dot * dt)
+            xs[i + 1][1] = xs[i][1] + (y_dot * dt)
+            xs[i + 1][2]= xs[i][2] + (z_dot * dt)
+
+    else:
+        for i in range(num_steps):
+            x_dot, y_dot, z_dot = func(xs[i][0], xs[i][1], xs[i][2], params[i, 0], params[i, 1], params[i, 2])
+            xs[i + 1][0] = xs[i][0] + (x_dot * dt)
+            xs[i + 1][1] = xs[i][1] + (y_dot * dt)
+            xs[i + 1][2] = xs[i][2] + (z_dot * dt)
+
+    return xs
+
+@njit
+def simRossler(params, num_steps=10000, x0=np.array((0., 1., 1.05)), dt=.01):
+
+
+    xs = np.zeros((num_steps+1, 3), dtype=np.float_)
+
+
+    xs[0] = x0
+
+    if params.ndim == 1:
+        for i in range(num_steps):
+            x_dot, y_dot, z_dot = rossler(xs[i][0], xs[i][1], xs[i][2], params[0], params[1], params[2])
+            xs[i + 1][0] = xs[i][0] + (x_dot * dt)
+            xs[i + 1][1] = xs[i][1] + (y_dot * dt)
+            xs[i + 1][2]= xs[i][2] + (z_dot * dt)
+
+    else:
+        for i in range(num_steps):
+            x_dot, y_dot, z_dot = rossler(xs[i][0], xs[i][1], xs[i][2], params[i, 0], params[i, 1], params[i, 2])
+            xs[i + 1][0] = xs[i][0] + (x_dot * dt)
+            xs[i + 1][1] = xs[i][1] + (y_dot * dt)
+            xs[i + 1][2] = xs[i][2] + (z_dot * dt)
+
+    return xs
 
 
 if __name__ == "__main__":
-    fn = "RegistrosDP_PP\\2018_12_03_0005.pklspikes"
+    fn = "RegistrosDP_PP/2018_12_03_0005.pklspikes"
     burst_obj = bStorerLoader(fn, 'RegistrosDP_PP', mode='load')
 
     arr_dict, time, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1'])
@@ -732,7 +770,7 @@ if __name__ == "__main__":
     dt_step = 0.1
     binned_sfd = burstUtils.digitizeSpikeFreqs(burst_obj.spike_freq_dict, dt_step, time[-1], counting=False)
 
-    cut_binned_freq_array = burstUtils.binned_spike_freq_dict_ToArray(binned_sfd, crawling_interval, good_neurons)
+    cut_binned_freq_array = burstUtils.binned_sfd_to_dict_array(binned_sfd, crawling_interval, good_neurons)
 
     sigma = .5
     rg = 5

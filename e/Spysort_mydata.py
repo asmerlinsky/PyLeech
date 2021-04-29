@@ -136,7 +136,7 @@ sorter.plotTemplates()
 
 sorter.assignChannelsToClusters()
 
-sorter.plotClusteredEvents(skip_bad=True, legend=True, lw=0.001)
+sorter.plotClusteredEvents(legend=True, lw=0.001)
 
 sorter.mergeClusters(6, [10])
 

@@ -2,7 +2,7 @@ import PyLeech.Utils.NLDUtils as NLD
 import PyLeech.Utils.AbfExtension as abfe
 from functools import partial
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
-import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.unitInfo as bStorerLoader
 import PyLeech.Utils.burstUtils
 import PyLeech.Utils.burstUtils as burstUtils
 import os
@@ -19,7 +19,7 @@ from sklearn.preprocessing import StandardScaler
 
 
 if __name__ == "__main__":
-    # fn = "RegistrosDP_PP\\2018_12_03_0005.pklspikes"
+    # fn = "RegistrosDP_PP/2018_12_03_0005.pklspikes"
 
     cdd = CDU.loadDataDict()
 
@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
         # for fn in cdb.index.levels[0][3:7]:
 
-        burst_obj = bStorerLoader.BurstStorerLoader(fn, 'RegistrosDP_PP', mode='load')
+        burst_obj = bStorerLoader.UnitInfo(fn, 'RegistrosDP_PP', mode='load')
         try:
             arr_dict, time_vector, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1'])
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=4, time_range=30, dt_step=1 / fs)
         conv_NS = spsig.fftconvolve(NS, kernel, mode='same')
         cut_NS = conv_NS[idxs]
-        cut_binned_freq_array = burstUtils.binned_spike_freq_dict_ToArray(binned_sfd, crawling_interval, good_neurons)
+        cut_binned_freq_array = burstUtils.binned_sfd_to_dict_array(binned_sfd, crawling_interval, good_neurons)
 
         kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=2, time_range=20, dt_step=.1)
         smoothed_sfd = {}

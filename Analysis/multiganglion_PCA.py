@@ -1,6 +1,6 @@
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
 import PyLeech.Utils.burstUtils
-from PyLeech.Utils.burstStorerLoader import BurstStorerLoader
+from PyLeech.Utils.unitInfo import UnitInfo
 import PyLeech.Utils.AbfExtension as abfe
 import PyLeech.Utils.burstUtils as burstUtils
 import numpy as np
@@ -27,15 +27,15 @@ if __name__ == '__main__':
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
 
-    dim_2 = False
+    dim_2 = True
     dim_3 = True
     binning_dt = .5
     spike_kernel_sigma = 3
-    n_components = 3
+    n_components = 5
 
     cdd = CDU.loadDataDict()
     sc = StandardScaler()
-    ica = FastICA(n_components=n_components, max_iter=5000)
+    ica = FastICA(n_components=n_components, max_iter=15000)
     fa = FactorAnalysis(n_components=n_components)
     pca = PCA(n_components=n_components)
     model_dict = {
@@ -45,22 +45,27 @@ if __name__ == '__main__':
 
         }
 
-    del cdd["RegistrosDP_PP\\NS_DP_PP_0.pklspikes"]
-    del cdd["RegistrosDP_PP\\NS_T_DP_PP_0_cut.pklspikes"]
-    del cdd["RegistrosDP_PP\\NS_T_DP_PP_1.pklspikes"]
-    del cdd["RegistrosDP_PP\\2019_01_28_0001.pklspikes"]
-    del cdd['RegistrosDP_PP\\18n05010.pklspikes']
-    del cdd['RegistrosDP_PP\\14217000.pklspikes']
-    del cdd['RegistrosDP_PP\\cont10.pklspikes']
+    del cdd["RegistrosDP_PP/NS_DP_PP_0.pklspikes"]
+    del cdd["RegistrosDP_PP/NS_T_DP_PP_0_cut.pklspikes"]
+    del cdd["RegistrosDP_PP/NS_T_DP_PP_1.pklspikes"]
+    del cdd["RegistrosDP_PP/2019_01_28_0001.pklspikes"]
+    del cdd['RegistrosDP_PP/18n05010.pklspikes']
+    del cdd['RegistrosDP_PP/14217000.pklspikes']
+    del cdd['RegistrosDP_PP/cont10.pklspikes']
 
     for fn, data in cdd.items():
-
+        if not any([select in fn for select in ["2019_07_22_0009", "2019_07_23_0008"] ]):
+            continue
         try:
             ns_channel = [key for key, items in data['channels'].items() if 'NS' == items][0]
             # print("Running %s" % fn)
         except IndexError:
             ns_channel = None
 
+
+        good_neurons = [neuron for neuron, neuron_dict in data['neurons'].items() if neuron_dict['neuron_is_good']]
+        if len(good_neurons)<7: continue
+        fn = fn.replace("/", '/')
 
         if ns_channel is not None:
             arr_dict, time_vector1, fs = abfe.getArraysFromAbfFiles(fn, ['Vm1'])
@@ -72,64 +77,53 @@ if __name__ == '__main__':
 
         del arr_dict
 
-        burst_object = BurstStorerLoader(fn, 'RegistrosDP_PP', 'load')
-
-        good_neurons = [neuron for neuron, neuron_dict in data['neurons'].items() if neuron_dict['neuron_is_good']]
-
-        spike_freq_array = burstUtils.processSpikeFreqDict(burst_object.spike_freq_dict, step=int(binning_dt * fs) / fs,
-                                                           num=time_vector1.shape[0],
-                                                           time_length=burst_object.time[-1])
+        burst_object = UnitInfo(fn, 'RegistrosDP_PP', 'load')
 
 
 
+        spike_freq_array = burstUtils.processSpikeFreqDict(burst_object.spike_freq_dict, step=binning_dt,
+                                                     selected_neurons=good_neurons,
+                                                     time_length=burst_object.time[-1])
 
-        smoothed_sfd = {}
+        smoothed_sfd = burstUtils.smoothBinnedSpikeFreqDict(spike_freq_array, sigma=spike_kernel_sigma,
+                                                                         time_range=20, dt_step=binning_dt)
+
+
         burst_array = []
+        for key, items in smoothed_sfd.items():
 
-        kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=binning_dt)
-        if ns_channel is not None:
-            burst_array.append(conv_NS)
-
-        for key, items in spike_freq_array.items():
-            smoothed_sfd[key] = np.array([items[0], spsig.fftconvolve(items[1], kernel, mode='same')])
             burst_array.append(smoothed_sfd[key][1])
         burst_array = np.array(burst_array).T
-        spike_idxs = NLD.getSpikeIdxs(smoothed_sfd, cdd[fn]["crawling_intervals"])
-        if data["DE3"] != -1 and data["DE3"] is not None and ns_channel is not None:
-            fig, ax = plt.subplots()
-            tf = sc.fit_transform(np.array([conv_NS, smoothed_sfd[data["DE3"]][1]]).T)
-            ax.scatter(tf[spike_idxs,0],tf[spike_idxs,1], c=cmap(np.repeat(np.linspace(0, 1, n_splits), np.ceil(spike_idxs.shape[0]/n_splits))[:spike_idxs.shape[0]]), s=15)
-            fig.suptitle(fn)
-            ax.set_xlabel("NS")
-            ax.set_ylabel("DE3")
 
-        if ns_channel is not None:
-            fig, ax_list = burstUtils.plotFreq(smoothed_sfd, scatter_plot=False, color_dict='single_color', draw_list=good_neurons,
-                                optional_trace=[time_vector1, conv_NS])
-        else:
-            fig, ax_list = burstUtils.plotFreq(smoothed_sfd, scatter_plot=False, color_dict='single_color',
-                                               draw_list=good_neurons)
+        fig, ax_list = burstUtils.plotFreq(burst_object.spike_freq_dict, color_dict=burst_object.color_dict,
+                                        scatter_plot=True, draw_list=good_neurons, outlier_thres=2, facecolor=None,
+                                        legend=False)
+        # fig, ax_list = burstUtils.plotFreq(smoothed_sfd, scatter_plot=False, color_dict='single_color',
+        #                                    draw_list=good_neurons, legend=False, outlier_thres=None)
 
-        split_times = np.linspace(cdd[fn]["crawling_intervals"][0][0], cdd[fn]["crawling_intervals"][-1][-1], num=n_splits+1)
-        boxes = [matplotlib.patches.Rectangle((split_times[i],-1000), split_times[i+1]-split_times[i], 2000) for i in range(n_splits)]
+        # split_times = np.linspace(cdd[fn.replace("/", "/")]["crawling_intervals"][0][0], cdd[fn.replace("/", "/")]["crawling_intervals"][-1][-1], num=n_splits+1)
+        # boxes = [matplotlib.patches.Rectangle((split_times[i],-1000), split_times[i+1]-split_times[i], 2000) for i in range(n_splits)]
 
-
+        #
         for ax in ax_list:
-            ax.set_facecolor('white')
-            pc = matplotlib.collections.PatchCollection(boxes, facecolor=cmap(n_colors), alpha=.5)
-            ax.add_collection(pc)
-
-            ax.legend().set_visible(False)
+            ax.grid(None)
+        #     ax.set_facecolor('white')
+        #     pc = matplotlib.collections.PatchCollection(boxes, facecolor=cmap(n_colors), alpha=.5)
+        #     ax.add_collection(pc)
+        #
+        #     ax.legend().set_visible(False)
         fig.suptitle(fn)
-        ax.set_xlim([cdd[fn]["crawling_intervals"][0][0], cdd[fn]["crawling_intervals"][-1][-1]])
+        # ax.set_xlim([cdd[fn.replace("/", "/")]["crawling_intervals"][0][0], cdd[fn.replace("/", "/")]["crawling_intervals"][-1][-1]])
+        fig.subplots_adjust(wspace=0, hspace=0)
+        spike_idxs = NLD.getSpikeIdxs(smoothed_sfd, cdd[fn.replace("/", "/")]["crawling_intervals"])
+        #
+        # if ns_channel is not None:
+        #     ax.set_ylim((conv_NS[spike_idxs].min(), conv_NS[spike_idxs].max()))
+        basename = os.path.splitext(os.path.basename(fn))[0]
 
-        spike_idxs = NLD.getSpikeIdxs(smoothed_sfd, cdd[fn]["crawling_intervals"])
 
-        if ns_channel is not None:
-            ax.set_ylim((conv_NS[spike_idxs].min(), conv_NS[spike_idxs].max()))
-
-        save_name = "csvs/" + os.path.splitext(os.path.basename(fn))[0] + ".csv"
-        # fig.savefig(save_name, dpi=600)
+        save_name = "PCA_figs/" + basename + ".png"
+        fig.savefig(save_name, dpi=600, transparent=True)
         # cols = ['NS'] + [str(i) for i in list(smoothed_sfd)]
         # df = pd.DataFrame(burst_array, columns=cols)
         # df.to_csv(save_name, index=False)
@@ -142,11 +136,25 @@ if __name__ == '__main__':
         model_dict["ICA"][fn] = ica.fit_transform(scaled_data)
         model_dict["FA"][fn] = fa.fit_transform(scaled_data)
         model_dict["PCA"][fn] = pca.fit_transform(scaled_data)
-        fig, ax = plt.subplots(3,1, sharex=True)
-        for i in range(model_dict["PCA"][fn].shape[1]):
-            ax[i].plot(time_vector1[spike_idxs], model_dict["FA"][fn][spike_idxs,i])
-        fig.suptitle(fn)
+        val = pca.explained_variance_ratio_[:3].sum()
+        print(basename, val)
+        n_plots = 3
+        fig, ax = plt.subplots(n_plots,1, sharex=True)
+        for i in range(n_plots):
+            # ax[i].plot(time_vector1[spike_idxs], model_dict["FA"][fn][spike_idxs,i])
+            try:
+                ax[i].plot(time_vector1[:-1], model_dict["PCA"][fn][:,i], color='k')
+            except:
+                ax[i].plot(time_vector1, model_dict["PCA"][fn][:, i], color='k')
+            ax[i].set_xticks([])
+            ax[i].set_yticks([])
 
+
+        ax[0].set_xlim([100, 900])
+        fig.suptitle(fn + '\n explica el %1.2f de la varianza' % val)
+        fig.subplots_adjust(wspace=0, hspace=0)
+        fig.savefig("PCA_figs/" + basename + "componentes.png", transparent=True, dpi=600)
+        # break
 
     plot_model = "PCA"
     if dim_2:
@@ -167,7 +175,7 @@ if __name__ == '__main__':
                     ax.set_facecolor('gray')
                     fig.suptitle(model)
 
-                    # save_name = "PCA_figs/" + os.path.splitext(os.path.basename(key))[0] + "_PCA.png"
+                    save_name = "PCA_figs/" + os.path.splitext(os.path.basename(key))[0] + "_"+ plot_model + ".png"
                     # fig.savefig(save_name, dpi=600)
 
 
@@ -192,4 +200,7 @@ if __name__ == '__main__':
                     ax.xaxis.set_visible(False)
                     ax.yaxis.set_visible(False)
                     fig.suptitle(model)
+                    save_name = "PCA_figs/" + os.path.splitext(os.path.basename(key))[0] + "_" + plot_model + ".png"
+                    # fig.savefig(save_name, dpi=600, transparent=True)
+
                     i += 1

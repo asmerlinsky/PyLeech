@@ -5,7 +5,7 @@ import os
 import json
 import PyLeech.Utils.json_numpy as json_numpy
 
-import PyLeech.Utils.burstStorerLoader as burstStorerLoader
+import PyLeech.Utils.unitInfo as burstStorerLoader
 
 if os.getcwd() not in sys.path:
     sys.path.append(os.getcwd())
@@ -85,7 +85,7 @@ def appendToDatabase(filename_list, database, min_isi=0.005, max_isi=2):
 
         print(filename_list[j])
 
-        burst_object = burstStorerLoader.BurstStorerLoader(filename_list[j], 'load')
+        burst_object = burstStorerLoader.UnitInfo(filename_list[j], 'load')
 
         fig = burstUtils.plotFreq(burst_object.spike_freq_dict, burst_object.color_dict, optional_trace=None,
                                   template_dict=None, outlier_thres=3.5, ms=2)
@@ -157,20 +157,20 @@ def appendToDataDict(data_dict, filename=None):
     f.close()
 
 def plotSpikesFrompklspikes(filename):
-    burst_object = burstStorerLoader.BurstStorerLoader(filename, mode='load')
+    burst_object = burstStorerLoader.UnitInfo(filename, mode='load')
     plt.close()
     fig, ax = burstUtils.plotFreq(burst_object.spike_freq_dict, burst_object.color_dict, optional_trace=None,
                                   template_dict=None, outlier_thres=3.5, ms=2)
     fig.suptitle(filename)
 
-def generateSingleFileDataDict(filename, min_isi=0.005, max_isi=2, old_data_dict=None):
-    if old_data_dict is None:
-        old_data_dict = {}
+def generateSingleFileDataDict(filename, min_isi=0.005, max_isi=2, data_dict=None):
+    if data_dict is None:
+        data_dict = {}
 
 
     print("filename is %s" % filename)
 
-    burst_object = burstStorerLoader.BurstStorerLoader(filename, mode='load')
+    burst_object = burstStorerLoader.UnitInfo(filename, mode='load')
 
     plt.close()
 
@@ -184,8 +184,9 @@ def generateSingleFileDataDict(filename, min_isi=0.005, max_isi=2, old_data_dict
     crawling_intervals = []
 
     bad = False
-    if "crawling_intervals" not in list(old_data_dict):
-        while True:
+    if "crawling_intervals" not in list(data_dict):
+        keep_going = True
+        while keep_going:
 
                 ipt = input(
                     "input crawling interval as min-max one by one\nIf finished press enter, if useless file input \"skip\"\n")
@@ -194,23 +195,27 @@ def generateSingleFileDataDict(filename, min_isi=0.005, max_isi=2, old_data_dict
                     crawling_intervals.append([float(x) for x in ipt_list])
                 elif (len(ipt_list) == 1) and ipt_list[0].lower() == 'skip':
                     bad = True
-                    break
+                    keep_going = False
                 elif len(ipt) == 0:
-                    break
+                    keep_going = False
                 else:
                     print("Didn´t understood input")
+        data_dict["crawling_intervals"] = crawling_intervals
 
     if bad:
         return {"skipped": True}
+    else:
+        data_dict["skipped"] = False
 
     De3 = None
-    if "DE3" not in list(old_data_dict) or old_data_dict["DE3"] is None:
+    if "DE3" not in list(data_dict) or data_dict["DE3"] is None:
         if burst_object.isDe3 is not None:
             ipt = input("De3 is %i, is this right? ('y' or pass right number)" % burst_object.isDe3)
             try:
                 De3 = int(ipt)
             except ValueError:
                 De3 = burst_object.isDe3
+            data_dict["DE3"] = De3
         else:
             ipt = input("which no. is DE3?")
             try:
@@ -219,9 +224,11 @@ def generateSingleFileDataDict(filename, min_isi=0.005, max_isi=2, old_data_dict
                 pass
 
     neuron_dict = {}
-    if "neurons" not in list(old_data_dict):
+    if "neurons" not in list(data_dict):
         for key in burst_object.spike_freq_dict.keys():
-            ci = crawling_intervals[0]
+
+
+            ci = data_dict["crawling_intervals"][0]
             spikes = burst_object.spike_freq_dict[key][0]
             crawling_spikes = spikes[(spikes > ci[0]) & (spikes < ci[1])]
             diff = np.diff(crawling_spikes)
@@ -229,24 +236,31 @@ def generateSingleFileDataDict(filename, min_isi=0.005, max_isi=2, old_data_dict
 
             diff_mean = np.mean(diff)
             diff_std = np.std(diff)
-            good_unit = str(input('Is unit %i good\n(y/n)?\n' % key))
-            if good_unit in ['true', 'True', 'y', 'Y']:
-                good_unit = True
-            elif good_unit in ['false', 'False', 'n', 'N']:
-                good_unit = False
-            else:
-                good_unit = np.nan
+            got_it = False
+            while not got_it:
+                good_unit = str(input('Is unit %i good\n(y/n)?\n' % key))
+                if good_unit in ['true', 'True', 'y', 'Y']:
+                    good_unit = True
+                    got_it = True
+                elif good_unit in ['false', 'False', 'n', 'N']:
+                    good_unit = False
+                    got_it = True
+                else:
+                    print("I didn't understand the answer, Please try again\n")
 
             neuron_dict[str(key)] = {"ISI_mean": diff_mean, "ISI_std": diff_std, "neuron_is_good": good_unit}
 
-    if 'channels' not in list(old_data_dict):
+        data_dict["neurons"] = neuron_dict
+
+    if 'channels' not in list(data_dict):
         ch_list = ["Vm1", "Vm2", "IN4", "IN5", "IN6", "IN7"]
         ch_dict = {}
         for channel in ch_list:
             ch_dict[channel] = str(input("what did %s record?" % channel))
+        data_dict["channels"] = ch_dict
 
 
-    return {"DE3": De3, "neurons": neuron_dict, "crawling_intervals": crawling_intervals, "skipped": False, "channels": ch_dict}
+    return data_dict
 
 
 def newEntryToDataDict(filename_list, database='RegistrosDP_PP/CrawlingDataDict.json', min_isi=0.005, max_isi=2):
@@ -265,16 +279,22 @@ def newEntryToDataDict(filename_list, database='RegistrosDP_PP/CrawlingDataDict.
         if filename_list[j] not in list(crawling_data_dict):
             new_files.append(filename_list[j])
             single_data_dict = generateSingleFileDataDict(filename_list[j], min_isi, max_isi)
+
         elif crawling_data_dict[filename_list[j]]["skipped"]:
             single_data_dict = None
+
         elif not all([c in list(crawling_data_dict[filename_list[j]]) for c in skeys]):
             updated_files.append(filename_list[j])
             print("Re-updating entry for %s due to missing the following keys:" % filename_list[j])
-            [print(c) for c in skeys if c not in list(crawling_data_dict[filename_list[j]])]
+            missing_keys = [c for c in skeys if c not in list(crawling_data_dict[filename_list[j]])]
+            print("\n".join(missing_keys))
             ipt = input("rerun database (y) or simply update missing key(n)?")
+
             if str(ipt).lower == "y":
-                del crawling_data_dict[filename_list[j]]
-                single_data_dict = generateSingleFileDataDict(filename_list[j], min_isi, max_isi)
+                for key in missing_keys:
+                    del crawling_data_dict[filename_list[j]][key]
+                single_data_dict = generateSingleFileDataDict(filename_list[j], min_isi, max_isi,
+                                                              crawling_data_dict[filename_list[j]])
             else:
                 single_data_dict = generateSingleFileDataDict(filename_list[j], min_isi, max_isi,
                                                               crawling_data_dict[filename_list[j]])

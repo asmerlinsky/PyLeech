@@ -2,7 +2,7 @@ import PyLeech.Utils.NLDUtils as NLD
 import PyLeech.Utils.AbfExtension as abfe
 from functools import partial
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
-import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.unitInfo as bStorerLoader
 import PyLeech.Utils.burstUtils as burstUtils
 import os
 import math
@@ -18,13 +18,34 @@ from sklearn.preprocessing import StandardScaler
 
 
 if __name__ == "__main__":
-    # fn = "RegistrosDP_PP\\2018_12_03_0005.pklspikes"
-    params = [.2, .2, 14]
-    data = NLD.simDynamicalSistem(*params, func=NLD.rossler, num_steps=20000, dt=0.01, x0=np.array([10., 10., 0]))
+    # fn = "RegistrosDP_PP/2018_12_03_0005.pklspikes"
+
+    num_steps = 10000
+    params = np.array((.1, .1, 4))
+    x0 = np.array([4, 0, 0])
+    data = NLD.simRossler(params, num_steps=num_steps, dt=0.01, x0=x0)
+    x0 = data[-1]
+
+    num_steps = 10000
+    num_params = 30
+
+    x = np.repeat(.1, num_steps)
+    y = y = np.repeat(.1, num_steps)
+
+    z = np.linspace(4, 8, num_params+1)
+    z = np.repeat(z, math.ceil(num_steps/z.shape[0]))[:num_steps]
+
+    params = np.array((x, y, z)).T
+    del x, y, z
+
+
+    data = NLD.simRossler(params, num_steps=num_steps, dt=0.01, x0=x0)
     trace = np.array([data[:, 0]]).T
     NLD.plot3Dline(data, linewidth=.5, color='k')
-    fig, ax = plt.subplots()
-    ax.plot(data[:,2])
+    fig, ax = plt.subplots(3, 1, sharex=True)
+    for i in range(data.shape[1]):
+        ax[i].plot(data[:,i])
+
     rt = NLD.getCloseReturns(trace, get_mask=True, threshold=.01)
     NLD.plotCloseReturns(rt, reorder=False)
     segments = NLD.getCloseReturnsSegmentsFromUnorderedMatrix(rt, rt_len=1400, single_file=True, min_dist=200)

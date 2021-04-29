@@ -2,7 +2,7 @@ import PyLeech.Utils.NLDUtils as NLD
 import PyLeech.Utils.AbfExtension as abfe
 
 import PyLeech.Utils.CrawlingDatabaseUtils as CDU
-import PyLeech.Utils.burstStorerLoader as bStorerLoader
+import PyLeech.Utils.unitInfo as bStorerLoader
 import PyLeech.Utils.burstUtils
 import PyLeech.Utils.burstUtils as burstUtils
 import os
@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
     file_list = []
     for files in list(cdd.keys()):
-        burst_obj = bStorerLoader.BurstStorerLoader(files, 'RegistrosDP_PP', mode='load')
+        burst_obj = bStorerLoader.UnitInfo(files, 'RegistrosDP_PP', mode='load')
         try:
             arr_dict, time_vector1, fs = abfe.getArraysFromAbfFiles(files, ['Vm1'])
             file_list.append(files)
@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
         binning_dt = 0.1
 
-        burst_obj = bStorerLoader.BurstStorerLoader(fn1, 'RegistrosDP_PP', mode='load')
+        burst_obj = bStorerLoader.UnitInfo(fn1, 'RegistrosDP_PP', mode='load')
 
         # new_sfd = burstUtils.removeOutliers(burst_obj.spike_freq_dict, 5)
         # binned_sfd = burstUtils.digitizeSpikeFreqs(new_sfd, binning_dt, time_vector[-1], count=False)
