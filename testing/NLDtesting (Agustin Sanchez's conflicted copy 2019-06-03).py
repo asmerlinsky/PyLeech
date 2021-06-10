@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
 
         new_sfd = burstUtils.removeOutliers(burst_obj.spike_freq_dict, 5)
-        binned_sfd = burstUtils.digitizeSpikeFreqs(new_sfd, dt_step, time_vector[-1], count=False)
+        binned_sfd = burstUtils.digitizeSpikeFreqs(new_sfd, time_vector[-1])
         idxs= []
         for interval in crawling_interval:
             idxs.append(np.where((time_vector>interval[0]) & (time_vector<interval[1]))[0][::1000])

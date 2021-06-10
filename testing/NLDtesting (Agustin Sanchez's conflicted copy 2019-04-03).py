@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
 
         new_sfd = burstUtils.removeOutliers(burst_obj.spike_freq_dict, 5)
-        binned_sfd = burstUtils.digitizeSpikeFreqs(new_sfd, dt_step, time_vector[-1], counting=False)
+        binned_sfd = burstUtils.digitizeSpikeFreqs(new_sfd, time_vector[-1], counting=False)
         idxs = np.where((time_vector>crawling_interval[0]) & (time_vector<crawling_interval[1]))[0][::1000]
         cut_time = time_vector[idxs]
         cut_NS = NS[idxs]

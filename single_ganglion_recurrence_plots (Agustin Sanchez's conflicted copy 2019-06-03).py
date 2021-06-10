@@ -53,7 +53,7 @@ if __name__ == "__main__":
         kernel_sigma = 1
 
         new_sfd = burstUtils.removeOutliers(burst_obj.spike_freq_dict, 5)
-        binned_sfd = burstUtils.digitizeSpikeFreqs(new_sfd, binning_dt, time_vector[-1], count=False)
+        binned_sfd = burstUtils.digitizeSpikeFreqs(new_sfd, time_vector[-1])
         cut_binned_freq_array = burstUtils.binned_sfd_to_dict_array(binned_sfd, crawling_intervals, good_neurons)
         kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=kernel_sigma, time_range=20, dt_step=binning_dt)
         smoothed_sfd = {}

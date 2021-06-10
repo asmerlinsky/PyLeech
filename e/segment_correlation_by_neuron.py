@@ -165,7 +165,7 @@ for j in range(6,8):
     # burstUtils.plotFreq(burst_object.spike_freq_dict, burst_object.color_dict, optional_trace=[time[::5], NS[::5]],
     #                     template_dict=burst_object.template_dict, outlier_thres=10, sharex=None)
 
-    binned_sfd = burstUtils.digitizeSpikeFreqs(burst_object.spike_freq_dict, 5 / fs, time[-1], counting=True)
+    binned_sfd = burstUtils.digitizeSpikeFreqs(burst_object.spike_freq_dict, time[-1], counting=True)
     print('file %i' % j)
     for key, items in binned_sfd.items():
         print('neuron %i' % key)

@@ -14,6 +14,22 @@ import warnings
 
 
 def getInstFreq(time, spike_dict, fs):
+    """
+    Generates an spike frequency dictionary of the type {key:[spike times, spike instataneous frequency]} where `key` is
+    its corrresponding neuron number
+    Parameters
+    ----------
+    time ndarray:
+        time array where the spikes were acquired from
+    spike_dict dict:
+        spike dictionary of the type {key: [spike times, spike indexes]
+    fs float:
+        data sampling frequency
+
+    Returns
+    -------
+    spike_freq_dict dict
+    """
     spike_freq_dict = {}
     for key, items in spike_dict.items():
         spike_freq_dict.update({key: [time[items[:-1]], np.reciprocal(np.diff(items) / fs)]})
@@ -22,15 +38,54 @@ def getInstFreq(time, spike_dict, fs):
 
 
 def getSpikeTimesDict(spike_freq_dict):
+    """
+    Generates a dictionary of spike times from an spike_freq_dict
+    Parameters
+    ----------
+    spike_freq_dict dict:
+        Dictionary of the type [spike times, spike instataneous frequency]} where `key` is
+    its corrresponding neuron number
+
+    Returns
+    -------
+    SpikeTimesDict dict
+    """
     return {key: items[0] for key, items in spike_freq_dict.items()}
 
 
 def binSpikesFreqs(spike_freq_dict, time_length, step, full_binning=False, use_median=False):
+    """
+    Generates digitized spike frequency dictionary from a non digitized spike_freq_dict
+    Parameters
+    ----------
+    spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where 'key' is
+    its corrresponding neuron number
+    time_length float:
+        time_length from where the signal was acquired
+    step float:
+        binning step to be used for the digitalization process
+    full_binning bool:
+        Parameter for controlling the digitalization length, if True it will generate the binning up to 'time_length'
+        even if spiking activity ended before that value
+    use_median bool:
+        if True, the binned value will be computed by calculating the median spike period rather than the average
+
+    Returns
+    -------
+    binned_spike_freq_dict dict:
+        The corresponding digitalization of the spike_freq_dict
+    """
+
+    # Generates bin edges
     rg = np.arange(0, time_length, step)
     binned_spike_freq_dict = {}
     for key, item in spike_freq_dict.items():
 
+        # returns the bining for each unit
         bins = spikeUtils.binXYLists(rg, item[0], item[1], get_median=use_median, std_as_err=True)
+
+        # generates the actual dictionary
         if full_binning:
             freqs = np.zeros(len(rg))
             freqs[np.in1d(rg, bins[0])] = bins[1]
@@ -41,19 +96,56 @@ def binSpikesFreqs(spike_freq_dict, time_length, step, full_binning=False, use_m
 
 
 def removeOutliers(spike_freq_dict, outlier_threshold=3.5):
+    """
+    Removes detected outliers by comparing the instant frequency with respect to the average instant frequency.
+
+    Parameters
+    ----------
+     spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where 'key' is
+        its corrresponding neuron number
+
+    outlier_threshold float:
+        In units of standard deviation
+
+    Returns
+    An updated spike_freq_dict without spikes where its instataneous frequency was above the selected threshold
+    -------
+
+    """
     no_outlier_sfd = {}
     for key, items in spike_freq_dict.items():
+        ##This function compares each value with the threshold and returns a boolean array
         outlier_mask = is_outlier(items[1], thresh=outlier_threshold)
         no_outlier_sfd[key] = [items[0][~outlier_mask], items[1][~outlier_mask]]
     return no_outlier_sfd
 
 
-def digitizeSpikeFreqs(spike_freq_dict, step, num, time_length=None, counting=False, freq_threshold=None):
+def digitizeSpikeFreqs(spike_freq_dict, num, time_length=None, counting=False, freq_threshold=None):
+    """
+    Generates digitized spike frequency dictionary from a non digitized spike_freq_dict. It will always return a full
+    binning.
+    Parameters
+    ----------
+    spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where `key` is
+        its corresponding neuron number
+    num int:
+        Number of bins to be used
+    time_length float:
+        Original signal duration in seconds.
+    counting bool:
+         If set to True, the function will return spike count by bin. If False, it will return mean frequency.
+    freq_threshold float:
+        frequency threshold to be used in outlier removal before digitalization
+
+    Returns
+    -------
+    binned_spike_freq_dict
+    """
+
     if time_length is None:
         time_length = max([items[1].max() for key, items in spike_freq_dict.items()])
-    """ Always returns full binning
-    If count is set to True, it will return spike count by bin.
-    If false, it will return mean freq"""
 
     rg = np.linspace(0, time_length, num, endpoint=False)
 
@@ -94,7 +186,7 @@ def digitizeSpikeFreqs(spike_freq_dict, step, num, time_length=None, counting=Fa
             if counting == 'bool':
                 freqs[freqs != 0] = 1
 
-        if (counting == 'bool') and ((freqs == 0).sum() <15):
+        if (counting == 'bool') and ((freqs == 0).sum() < 15):
             pass
         else:
             binned_spike_freq_dict[key] = np.array([rg[:], deepcopy(freqs)])
@@ -103,6 +195,29 @@ def digitizeSpikeFreqs(spike_freq_dict, step, num, time_length=None, counting=Fa
 
 
 def digitizeSpikeTimes(spike_times, step, time_length, counting=False):
+    """
+    Generates digitized spike counts from an array corresponding to the spike times of a single unit. If `counting` is
+    False, the function returns an binary array indicating activity/no activity in the correspoding bin.
+    Parameters
+    ----------
+    spike_times ndarray:
+        array with every spike time for the corresponding neuron.
+    step int:
+        binning step.
+    time_length float:
+        Original signal duration in seconds.
+    counting bool:
+        if True, the function will return bin edges and spikes counts. if False, it will return a binarized array instead
+        of spike counts.
+    Returns
+    -------
+    rg ndarray:
+        bin edges generated for the digitalization.
+    counts ndarray:
+        array with spike counts for each bin. Returned only if `counting` is True.
+    binary_count ndarray:
+        binary array accounting only for spiking activity. Returned only if counting is False.
+    """
     rg = np.arange(0, time_length, step)
 
     times = np.array(spike_times)
@@ -113,16 +228,50 @@ def digitizeSpikeTimes(spike_times, step, time_length, counting=False):
         counts[uid] = 1
         return counts
     else:
-        return rg, np.bincount(digitalization, minlength=len(rg))
+        binary_count = np.bincount(digitalization, minlength=len(rg))
+        return rg, binary_count
 
 
 def getSpISIdictFromSpFreqdict(spike_freq_dict):
+    """
+    A resumed way to get inter spike intervals for spike from a spike_freq_dict. The method may incur in numeric errors.
+    Parameters
+    ----------
+    spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where `key` is
+        its corresponding neuron number
+
+    Returns
+    -------
+    sISId dict:
+        A dictionary like a spike_freq_dict, but with ISIs instead of instant frequency.
+
+    """
     sISId = {key: [items[0], 1 / items[1]] for key, items in spike_freq_dict.items()}
 
     return sISId
 
 
 def binSpikeISIdict(spike_ISI_dict, time_length, step, full_binning=False):
+    """
+    Generates a binned inter spike interval dict, just like the binned_spike_freq_dict is generated
+    Parameters.
+    ----------
+    spike_ISI_dict dict:
+        A spike dict of the type {key: [spike times, inter spike interval]}.
+    time_length float:
+        Original signal duration in seconds.
+    step float:
+        binning step to be used for the digitalization process.
+    full_binning bool:
+        Parameter for controlling the digitalization length, if True it will generate the binning up to 'time_length'
+        even if spiking activity ended before that value.
+
+    Returns
+    -------
+    binned_spike_ISI_dict dict:
+        the corresponding binned inter spike interval dictionary.
+    """
     rg = np.arange(0, time_length, step)
     binned_spike_ISI_dict = {}
     for key, item in spike_ISI_dict.items():
@@ -138,16 +287,45 @@ def binSpikeISIdict(spike_ISI_dict, time_length, step, full_binning=False):
 
 
 def getNonZeroIdxs(trace, threshold):
+    """
+    Gets burst start and end indexes from a trace of binned spike frequencies
+
+    Parameters
+    ----------
+    trace ndarray:
+        numpy array with binned spike frequency
+    threshold:
+        spike rate threshold
+
+    Returns
+    -------
+    indexes where bursts start
+    """
+
     non_zero_idxs = np.where(trace > threshold)[0]
     jumps = np.append([0], np.where(np.diff(non_zero_idxs) > 1)[0])
     jumps = np.append(jumps, jumps + 1)
     return np.sort(non_zero_idxs[jumps[1:-1]])
 
 
-# def getNonZeroIntervals(edge_idxs):
-
-
 def plotDataPredictionAndResult(time, data, pred):
+
+    """
+    plot trace, prediction and peeling results from the spike sorting using the arrays stored in `Spsorter.time`,
+    `Spsorter.pred` and `Spsorter.peel`.
+    Parameters
+    ----------
+    time ndarray:
+        Time array to be used for the x axis, it can be usually used by passing `Spsorter.time`.
+    data ndarray:
+        Prediction array. Usually `Spsorter.peel[-1]` to plot the last prediction.
+    pred ndarray:
+        After peeling prediction. Usually `Spsorter.pred[-1]` to plot the most updated step
+
+    Returns
+    -------
+    Nothing. It only generates a Figure.
+    """
     res = data - pred
     for i in range(len(data)):
         fig = plt.figure(figsize=(16, 8))
@@ -261,19 +439,20 @@ def plotFreq(spike_freq_dict, color_dict=None, label_dict=None, optional_trace=N
              scatter_plot=True,
              single_figure=False, skip_list=None, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None,
              facecolor='lightgray', legend=True):
-    """Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
+    """
+    Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
 
-            Parameters
-            ----------
-            spike_freq_dict: a dictionary of the different clusters pointing to a list of two np arrays(time, freq)
-            color_dict: a dictionary of clusters containing its corresponding color sequence
-            optional_trace: list of time, trace desired to add to the graph (for example [time_vector, NS neuron trace])
+    Parameters
+    ----------
+    spike_freq_dict: a dictionary of the different clusters pointing to a list of two np arrays(time, freq)
+    color_dict: a dictionary of clusters containing its corresponding color sequence
+    optional_trace: list of time, trace desired to add to the graph (for example [time_vector, NS neuron trace])
 
-            Returns
-            -------
-            Nothing is returned, the function is used for its side effect: a
-            plot is generated.
-            """
+    Returns
+    -------
+    Nothing is returned, the function is used for its side effect: a
+    plot is generated.
+    """
 
     if skip_list is None:
         skip_list = []
@@ -395,19 +574,20 @@ def plotFreq(spike_freq_dict, color_dict=None, label_dict=None, optional_trace=N
 def plotFreqByNerve(spike_freq_dict, color_dict=None, label_dict=None, nerve_unit_dict=None,
                     scatter_plot=True, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None, De3=None,
                     facecolor='lightgray', legend=True):
-    """Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
+    """
+    Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
 
-            Parameters
-            ----------
-            spike_freq_dict: a dictionary of the different clusters pointing to a list of two np arrays(time, freq)
-            color_dict: a dictionary of clusters containing its corresponding color sequence
-            optional_trace: list of time, trace desired to add to the graph (for example [time_vector, NS neuron trace])
+    Parameters
+    ----------
+    spike_freq_dict: a dictionary of the different clusters pointing to a list of two np arrays(time, freq)
+    color_dict: a dictionary of clusters containing its corresponding color sequence
+    optional_trace: list of time, trace desired to add to the graph (for example [time_vector, NS neuron trace])
 
-            Returns
-            -------
-            Nothing is returned, the function is used for its side effect: a
-            plot is generated.
-            """
+    Returns
+    -------
+    Nothing is returned, the function is used for its side effect: a
+    plot is generated.
+    """
 
     if color_dict is None:
         keys = [key for key in list(spike_freq_dict) if (key in draw_list)]
@@ -506,19 +686,20 @@ def plotFreqByNerve(spike_freq_dict, color_dict=None, label_dict=None, nerve_uni
 def plotCorrByNerve(corr_dict, color_dict=None, label_dict=None, nerve_unit_dict=None,
                     scatter_plot=True, draw_list=None, thres=None, ms=1, outlier_thres=None, sharex=None, De3=None,
                     burst_info=None, facecolor='lightgray', legend=True):
-    """Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
+    """
+    Plots instantaneous frequency from a given dictionary of the clusters and corresponding time, frequency lists
 
-            Parameters
-            ----------
-            corr_dict: a dictionary of the different clusters pointing to a list of two np arrays(time, freq)
-            color_dict: a dictionary of clusters containing its corresponding color sequence
-            optional_trace: list of time, trace desired to add to the graph (for example [time_vector, NS neuron trace])
+    Parameters
+    ----------
+    corr_dict: a dictionary of the different clusters pointing to a list of two np arrays(time, freq)
+    color_dict: a dictionary of clusters containing its corresponding color sequence
+    optional_trace: list of time, trace desired to add to the graph (for example [time_vector, NS neuron trace])
 
-            Returns
-            -------
-            Nothing is returned, the function is used for its side effect: a
-            plot is generated.
-            """
+    Returns
+    -------
+    Nothing is returned, the function is used for its side effect: a
+    plot is generated.
+    """
 
     if color_dict is None:
         keys = [key for key in list(corr_dict) if (key in draw_list)]
@@ -606,13 +787,15 @@ def plotCorrByNerve(corr_dict, color_dict=None, label_dict=None, nerve_unit_dict
             if burst_info is not None:
                 if sharex is not None:
                     ax = fig.add_subplot(j, 1, i, sharex=sharex, label=i)
-                    ax1 = fig.add_subplot(j, 1, i+1, sharex=sharex, label=i)
+                    ax1 = fig.add_subplot(j, 1, i + 1, sharex=sharex, label=i)
                 else:
                     ax = fig.add_subplot(j, 1, i, sharex=ax, label=i)
-                    ax1 = fig.add_subplot(j, 1, i+1, sharex=ax, label=i)
+                    ax1 = fig.add_subplot(j, 1, i + 1, sharex=ax, label=i)
 
-                ax.scatter(burst_info["burst median time"][:-1], burst_info["cycle period"], label='DP cycle period', s=ms)
-                ax1.scatter(burst_info["burst median time"][:-1], burst_info["burst duty cycle"], label='DP duty cycle', s=ms)
+                ax.scatter(burst_info["burst median time"][:-1], burst_info["cycle period"], label='DP cycle period',
+                           s=ms)
+                ax1.scatter(burst_info["burst median time"][:-1], burst_info["burst duty cycle"], label='DP duty cycle',
+                            s=ms)
                 ax_list.append(ax)
                 ax_list.append(ax1)
                 if legend:
@@ -631,6 +814,19 @@ def plotCorrByNerve(corr_dict, color_dict=None, label_dict=None, nerve_unit_dict
 
 
 def removeTicksFromAxis(ax, axis='y'):
+    """
+    removes tick from passed axes and axis.
+    Parameters
+    ----------
+    ax maptplotlib.axes.AxesSubplot:
+        axes from where the ticks will be removed.
+    axis str:
+        axis name from where the ticks will be removed: should be either 'x' or 'y'.
+
+    Returns
+    -------
+    Nothing.
+    """
     axis = getattr(ax, axis + 'axis')
     for tic in axis.get_major_ticks():
         tic.label1.set_visible(False)
@@ -644,6 +840,19 @@ def removeTicksFromAxis(ax, axis='y'):
 
 
 def showTicksFromAxis(ax, axis='y'):
+    """
+    removes tick from passed axes and axis.
+    Parameters
+    ----------
+    ax maptplotlib.axes.AxesSubplot:
+        axes to where the ticks will be added.
+    axis str:
+        axis name to where the ticks will be added: should be either 'x' or 'y'.
+
+    Returns
+    -------
+    Nothing.
+    """
     axis = getattr(ax, axis + 'axis')
     for tic in axis.get_major_ticks():
         tic.label1.set_visible(True)
@@ -651,6 +860,19 @@ def showTicksFromAxis(ax, axis='y'):
 
 
 def saveSpikeResults(filename, json_dict):
+    """
+    Saves a json dict in pickled format
+    Parameters
+    ----------
+    filename str:
+        data filename.
+    json_dict dict:
+        Dictionary to be stored
+
+    Returns
+    -------
+
+    """
     os.path.splitext(filename)[0] + '.pklspikes'
     print('Saved in %s' % filename)
     with open(filename, 'wb') as pfile:
@@ -658,6 +880,18 @@ def saveSpikeResults(filename, json_dict):
 
 
 def loadSpikeResults(filename):
+    """
+    Loads a pklspikes file saved in pickled format. It usually stores information of a PyLeech.Utils.unitInfo.UnitInfo
+    instance.
+    Parameters
+    ----------
+    filename str:
+        path to file
+
+    Returns
+    -------
+    dictionary of where keys are usually attributes of a UnitInfo instace.
+    """
     assert os.path.splitext(filename)[1] == '.pklspikes', 'Wrong file extension, I need a .pklspikes file'
 
     with open(filename, 'rb') as pfile:
@@ -667,77 +901,132 @@ def loadSpikeResults(filename):
 
 
 def getBursts(times, spike_max_dist=0.7, min_spike_no=10, min_spike_per_sec=10):
-    """ Returns list of bursts if there are any or empty if none
-
-    :param times:
-    :type np.ndarray
-    :param spike_max_dist:
-    :param min_spike_no:
-    :param min_spike_per_sec:
-    :return: list of lists
     """
+    Returns list of bursts if there are any given the conditions passed through the parameter, or empty if it finds none.
+    Parameters
+    ----------
+    times array:
+        Spike times of a single unit.
+    spike_max_dist float:
+        Maximum time inverval between two spikes for them to be considered part of the same burst.
+    min_spike_no int:
+        Minimum number of spikes for a set of spikes to be considered a burst.
+    min_spike_per_sec:
+        Minimum spike rate in burst for it to be considered as such.
+
+    Returns
+    -------
+    bursts_list list:
+        list of lists in which each list contains the spike times of the correspoding burst.
+
+    """
+    # if there are no spikes, just returns an empty list
     if len(times) == 0:
         return []
+
     burst_list = []
-    burst_index = []
+    spike_times = []
+
     for i in range(len(times) - 1):
-        burst_index.append(times[i])
+
+        spike_times.append(times[i])
+        ## it appends spikes times to the burst until the next one appears after `spike_max_dist`
         if (times[i + 1] - times[i]) > spike_max_dist:
-            if checkBurst(burst_index, min_spike_no, min_spike_per_sec):
-                burst_list.append(burst_index)
+
+            # Uses checkBurst function to check whether the conditions are satisfied
+            if checkBurst(spike_times, min_spike_no, min_spike_per_sec):
+                burst_list.append(spike_times)
+            # if not, it goes through checking a subset of bursts (Usually done in case the fire rate is below the
+            # threshold and removing the last few spikes satifies every condition
             else:
-                new_bursts = checkBurstWithin(burst_index, min_spike_no, min_spike_per_sec)
+                new_bursts = checkBurstWithin(spike_times, min_spike_no, min_spike_per_sec)
                 burst_list.extend(new_bursts)
 
-            burst_index = []
+            spike_times = []
 
     ## just in case the last one is considered a "burst" and was forgotten because it wasn't part of the previous burst
-    burst_index.append(times[-1])
+    spike_times.append(times[-1])
 
     ##checking the last one
-    if checkBurst(burst_index, min_spike_no, min_spike_per_sec):
-        burst_list.append(burst_index)
+    if checkBurst(spike_times, min_spike_no, min_spike_per_sec):
+        burst_list.append(spike_times)
     else:
-        new_bursts = checkBurstWithin(burst_index, min_spike_no, min_spike_per_sec)
+        new_bursts = checkBurstWithin(spike_times, min_spike_no, min_spike_per_sec)
         burst_list.extend(new_bursts)
 
     return burst_list
 
 
-def checkBurst(burst_index, min_spike_no, min_spike_per_sec):
-    if len(burst_index) < min_spike_no:
+def checkBurst(spike_times, min_spike_no, min_spike_per_sec):
+    """
+    check whether the list of spikes can be considered a burst given the conditions
+    Parameters
+    ----------
+    spike_times list:
+        List of burst times to be checked
+    min_spike_no int:
+        Minimum number of spikes for a set of spikes to be considered a burst.
+    min_spike_per_sec:
+        Minimum spike rate in burst for it to be considered as such.
+
+    Returns
+    -------
+    Boolean value
+    """
+    if len(spike_times) < min_spike_no:
         return False
-    elif len(burst_index) == 1:
+    elif len(spike_times) == 1:
         return True
-    elif len(burst_index) / (burst_index[-1] - burst_index[0]) > min_spike_per_sec:
+    elif len(spike_times) / (spike_times[-1] - spike_times[0]) > min_spike_per_sec:
         return True
     else:
         return False
 
 
-def checkBurstWithin(times_list, min_spike_no, min_spike_per_sec):
+def checkBurstWithin(spike_times, min_spike_no, min_spike_per_sec):
+    """
+    check whether there is a subset of spikes that can be considered a burst within the spike list. Usually run when
+    checkBurst function return False
+    Parameters
+    ----------
+    spike_times list:
+        List of burst times to be checked
+    min_spike_no int:
+        Minimum number of spikes for a set of spikes to be considered a burst.
+    min_spike_per_sec:
+        Minimum spike rate in burst for it to be considered as such.
+
+    Returns
+    -------
+    bursts list:
+        list of spikes times where a burst was found. If no burst is found it returns an empty list
+    """
     bursts = []
-    if len(times_list) <= min_spike_no:
+    if len(spike_times) <= min_spike_no:
         return []
 
     i = 0
-    while i < len(times_list) - min_spike_no:
+    # The subset of spikes being evaluated starts from the first spike
+    while i < len(spike_times) - min_spike_no:
 
-        for j in range(i + min_spike_no, len(times_list)):
-
-            if not checkBurst(times_list[i:j + 1],
+        for j in range(i + min_spike_no, len(spike_times)):
+            #check whether the current set can be considered a burst BUT not when one more spike is added.
+            if not checkBurst(spike_times[i:j + 1],
                               min_spike_no,
-                              min_spike_per_sec) and checkBurst(times_list[i:j],
+                              min_spike_per_sec) and checkBurst(spike_times[i:j],
                                                                 min_spike_no,
                                                                 min_spike_per_sec):
 
-                bursts.append(times_list[i:j])
+                bursts.append(spike_times[i:j])
                 i = j
-            elif (j == len(times_list) - 1) and checkBurst(times_list[i: len(times_list) + 1], min_spike_no,
-                                                           min_spike_per_sec):
-                bursts.append(times_list[i:j + 1])
+            # IF thats not the case and it reached the end, this line checks a last time
+            elif (j == len(spike_times) - 1) and checkBurst(spike_times[i: len(spike_times) + 1], min_spike_no,
+                                                            min_spike_per_sec):
+                bursts.append(spike_times[i:j + 1])
 
                 i = j
+
+            # If it found a burst, it will just break this iteration and start again from the first non checked spike.
             if i == j:
                 break
         i += 1
@@ -745,16 +1034,46 @@ def checkBurstWithin(times_list, min_spike_no, min_spike_per_sec):
     return bursts
 
 
-def getInterBurstInterval(burst_lists, no_burst=2):
-    burst_int = np.zeros((len(burst_lists) - no_burst, 2))
+def getInterBurstInterval(burst_list, no_burst=2):
+    """
+    Gets each burst time interval as the times where the current and following burst starts
+    Parameters
+    ----------
+    burst_list list of lists:
+        A list where each element is a bursts containing a list with its corresponding spikes
+    no_burst int:
+        Number of bursts to be used for interval calculation. If 1, the result is the InterburstInterval. If larger
+        than 1, it simply returns the time interval between the burst and `no_burst` bursts ahead
 
-    for i in range(len(burst_lists) - no_burst):
-        burst_int[i, 0] = burst_lists[i][0]
-        burst_int[i, 1] = burst_lists[i + no_burst][0]
+    Returns
+    -------
+    burst_int ndarray:
+        array of shape (number of bursts-`no_bursts`, 2) where the first column has the burst start time and the second
+        one the burst end time (next burst start time)
+
+    """
+    burst_int = np.zeros((len(burst_list) - no_burst, 2))
+
+    for i in range(len(burst_list) - no_burst):
+        burst_int[i, 0] = burst_list[i][0]
+        burst_int[i, 1] = burst_list[i + no_burst][0]
     return burst_int
 
 
 def generateFilenameFromList(filename):
+    """
+    Generates a new filename from a list of filenames, where each filename is of the type'YYYY_MM_DD_NNNN' and every
+    filename was generated on the same date
+    Parameters
+    ----------
+    filename list:
+        list of filenames
+
+    Returns
+    -------
+    new_filename str:
+        string in which each NNNN of each filename was append to it.
+    """
     new_filename = os.path.basename(filename[0]).split('_')
     new_filename = "_".join(new_filename[:-1])
 
@@ -766,6 +1085,20 @@ def generateFilenameFromList(filename):
 
 
 def generatePklFilename(filename, folder):
+    """
+    Generates a filename for a .pkl file given a path and a filename.
+    Parameters
+    ----------
+    filename list,str:
+        Filename from where data was extracted. Usually a '.abf' file. It can be a list if the data was stored in several
+        files.
+    folder
+        Path to where the file will be stored.
+    Returns
+    -------
+    filename str:
+        Return filename with its relative path.
+    """
     if folder is None:
         folder = 'RegistrosDP_PP/'
     else:
@@ -781,6 +1114,28 @@ def generatePklFilename(filename, folder):
 
 
 def categorical_cmap(nc, nsc, cmap="tab10", continuous=False):
+    """
+    Taken from here https://stackoverflow.com/a/47232942
+    Generates a categorical colormap to get the most different set of possible colors. It tries to generate as many
+    distiguinshible colors as it can.
+
+    Parameters
+    ----------
+    nc int:
+        Number of color categories.
+    nsc int:
+        Number of color subcategories.
+    cmap str:
+        Original cmap from where the new cmap will be generated.
+    continuous bool:
+        Whether to generate the categories in a continuous fashion or a discrete one.
+
+    Returns
+    -------
+    cmap func:
+        cmap with number of qualitative different required colors.
+
+    """
     if nc > plt.get_cmap(cmap).N:
         raise ValueError("Too many categories for colormap.")
     if continuous:
@@ -800,6 +1155,19 @@ def categorical_cmap(nc, nsc, cmap="tab10", continuous=False):
 
 
 def setGoodColors(good_clusters, num_col=10):
+    """
+    Generates a set of different colors for the `good_clusters` list
+    Parameters
+    ----------
+    good_clusters list:
+        List of different clusters that will be drawn in future figures.
+    num_col int:
+        Number of colors categories to be used.
+    Returns
+    -------
+    cluster_color dict:
+        Dictionary of the type {key: RGBA tuple} where key is the cluster associated with that corresponding color.
+    """
     cmap = categorical_cmap(num_col, math.ceil(len(good_clusters) / num_col))
     j = 0
     cluster_color = {}
@@ -809,12 +1177,23 @@ def setGoodColors(good_clusters, num_col=10):
     return cluster_color
 
 
-def spike_freq_dictToDataFrame(sfd):
-    for key in sfd.keys():
-        if type(sfd[key]) is list:
-            Tsfd = np.array(sfd[key]).transpose()
-        else:
-            Tsfd = np.array(sfd[key]).transpose()
+def spike_freq_dictToDataFrame(spike_freq_dict):
+    """
+    Adapts the spike_freq_dict into a DataFrame with three columns: neuron number, spike time, instant firing rate
+    Parameters
+    ----------
+    spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where 'key' is
+        its corrresponding neuron number.
+
+    Returns
+    -------
+    df pandas.DataFrame:
+        Dataframe with the same information as the `spike_freq_dict` but condensed into three columns.
+    """
+    for key in spike_freq_dict.keys():
+
+        Tsfd = np.array(spike_freq_dict[key]).transpose()
 
         keyarray = np.array([key] * Tsfd.shape[0])
 
@@ -833,26 +1212,47 @@ def spike_freq_dictToDataFrame(sfd):
     return df
 
 
-def binned_sfd_to_dict_array(sfd, time_interval=None, good_neurons=None):
+def binned_sfd_to_dict_array(binned_spike_freq_dict, time_interval=None, good_neurons=None):
+    """
+    Converts the items in a `binned_spike_freq_dict` wich are two list within a list into a numpy array of
+    shape (2, num_bins)
+
+    Parameters
+    ----------
+    binned_spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where 'key' is
+        its corrresponding neuron number.
+    time_interval float, list:
+        If it's a list, it will return the dictionary of arrays cut into those intervals. If its a number it will range
+        from 0 up to this time value at that time.
+    good_neurons list, None:
+        If None, it will return the dictionary with every key. If not, it will return a dictionary containing only the
+        passed units.
+
+    Returns
+    -------
+    new_sfd dict:
+        New spike frequency dict pointing to ndarrays insted of lists.
+    """
     new_sfd = {}
-    first_key = list(sfd)[0]
+    first_key = list(binned_spike_freq_dict)[0]
     if time_interval is not None:
         if type(time_interval[0]) is list:
 
-            mask = np.zeros(len(sfd[first_key][0]), dtype=bool)
+            mask = np.zeros(len(binned_spike_freq_dict[first_key][0]), dtype=bool)
 
             for interval in time_interval:
-                idxs = np.where((sfd[first_key][0] > interval[0]) & (sfd[first_key][0] < interval[1]))[0]
+                idxs = np.where((binned_spike_freq_dict[first_key][0] > interval[0]) & (binned_spike_freq_dict[first_key][0] < interval[1]))[0]
                 mask[idxs] = 1
 
         else:
 
-            mask = (sfd[first_key][0] > time_interval[0]) & (sfd[first_key][0] < time_interval[1])
+            mask = (binned_spike_freq_dict[first_key][0] > time_interval[0]) & (binned_spike_freq_dict[first_key][0] < time_interval[1])
     else:
 
-        mask = np.ones(sfd[first_key][0].shape[0], dtype=bool)
+        mask = np.ones(binned_spike_freq_dict[first_key][0].shape[0], dtype=bool)
 
-    for key, items in sfd.items():
+    for key, items in binned_spike_freq_dict.items():
         if good_neurons is None or key in good_neurons:
             new_sfd[key] = np.array([items[0][mask], items[1][mask]])
 
@@ -863,25 +1263,70 @@ def processSpikeFreqDict(spike_freq_dict, step, num=None, outlier_threshold=3.5,
                          time_length=None,
                          time_interval=None, counting=False, freq_threshold=None):
     """
+    Returns a full processing of a raw `spike_freq_dict`, integrating the necessary functions to to return a processed
+    spike frequenncy array of the type {key: ndarray(binned times, spike firing rate)}
 
-    :param spike_freq_dict:
-    :type dict:
-    :return: binned_freq_array
-    :rtype: dict
+    Parameters
+    ----------
+    spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where 'key' is its corrresponding
+        neuron number.
+    step float:
+        time step to be used for the binning interval
+    num Nonetype, int:
+        Number of bins to be used for binning. Alternative to step. Use only when a specific number of bins are needed.
+        It is best to avoid using it.
+    outlier_threshold float:
+        Outlier threshold in standard deviation units to be used in outlier removal before digitalization.
+    selected_neurons Nonetype, list:
+        If its None, every unit will be processed. If it's a list, then only data for those units will be returned
+    time_length Nonetype, float:
+        Original signal duration in seconds. If None, the function will use largest time found in the spike_freq_dict.
+    time_interval float, list:
+        If it's a list, it will return the dictionary of arrays cut into those intervals. If its a number it will range
+        from 0 up to this time value at that time.
+    counting bool:
+         If set to True, the function will return spike count by bin. If False, it will return mean frequency.
+    freq_threshold float:
+        frequency threshold to be used in outlier removal before digitalization. It usually won't be needed as the
+        the outlier removal will be done by using the outlier threshold.
+
+    Returns
+    -------
+    new_sfd dict:
+        A processed spike frequency dict pointing to ndarrays insted of lists.
     """
+
     if num is None:
         num = int(time_length / step)
         time_length -= time_length % step
 
     new_sfd = removeOutliers(spike_freq_dict, outlier_threshold=outlier_threshold)
 
-    new_sfd = digitizeSpikeFreqs(new_sfd, step=step, num=num, time_length=time_length, counting=counting,
+    new_sfd = digitizeSpikeFreqs(new_sfd, num=num, time_length=time_length, counting=counting,
                                  freq_threshold=freq_threshold)
 
     return binned_sfd_to_dict_array(new_sfd, time_interval=time_interval, good_neurons=selected_neurons)
 
 
 def cutSpikeFreqDict(spike_freq_dict, time_interval, outlier_threshold=3.5):
+    """
+    Cuts a spike_freq_dict into an specified time inverval
+    Parameters
+    ----------
+    spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where 'key' is its corrresponding
+        neuron number.
+    time_interval list:
+        Interval into which the `spike_freq_dict` will be cut
+    outlier_threshold float:
+        Outlier threshold in standard deviation units to be used in outlier removal before digitalization.
+
+    Returns
+    -------
+    new_sfd dict:
+        A new spike_freq_dict containing spikes only in the selected interval.
+    """
     new_sfd = {}
     for key, items in spike_freq_dict.items():
         mask = (items[0] > time_interval[0]) & (items[0] < time_interval[1])
@@ -893,6 +1338,40 @@ def cutSpikeFreqDict(spike_freq_dict, time_interval, outlier_threshold=3.5):
 def saveSpikeFreqDictToBinnedMat(spike_freq_dict, step, filename, num=None, outlier_threshold=3.5,
                                  selected_neurons=None, time_length=None,
                                  time_interval=None, counting=False, freq_threshold=None):
+
+    """
+    Processes and stores a spike_freq_dict into a condensed matrix of shape (time steps, number of units)
+    Parameters
+    ----------
+     spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where 'key' is its corrresponding
+        neuron number.
+    step float:
+        Time step to be used for the binning interval
+    filename str:
+        Path into which the .csv will be saved.
+    num Nonetype, int:
+        Number of bins to be used for binning. Alternative to step. Use only when a specific number of bins are needed.
+        It is best to avoid using it.
+    outlier_threshold float:
+        Outlier threshold in standard deviation units to be used in outlier removal before digitalization.
+    selected_neurons Nonetype, list:
+        If its None, every unit will be processed. If it's a list, then only data for those units will be returned.
+    time_length Nonetype, float:
+        Original signal duration in seconds. If None, the function will use largest time found in the spike_freq_dict.
+    time_interval float, list:
+        If it's a list, it will return the dictionary of arrays cut into those intervals. If its a number it will range
+        from 0 up to this time value at that time.
+    counting bool:
+         If set to True, the function will return spike count by bin. If False, it will return mean frequency.
+    freq_threshold float:
+        frequency threshold to be used in outlier removal before digitalization. It usually won't be needed as the
+        the outlier removal will be done by using the outlier threshold.
+
+    Returns
+    -------
+    Nothing. Only stores data into a .csv
+    """
     binned_sfd = processSpikeFreqDict(spike_freq_dict, step=step, num=num, outlier_threshold=outlier_threshold,
                                       selected_neurons=selected_neurons, time_length=time_length,
                                       time_interval=time_interval, counting=counting, freq_threshold=freq_threshold)
@@ -905,6 +1384,20 @@ def saveSpikeFreqDictToBinnedMat(spike_freq_dict, step, filename, num=None, outl
 
 
 def saveBinnedSfdToBinnedMat(binned_sfd, filename):
+    """
+    Stores a processed binned spike frequency dictionary into a csv table
+    Parameters
+    ----------
+    binned_spike_freq_dict dict:
+        Dictionary of the type {key: [spike times, spike instantaneous frequency]} where 'key' is
+        its corrresponding neuron number.
+    filename str:
+        Path into which the .csv will be saved.
+
+    Returns
+    -------
+    Nothing. Only stores data into a .csv
+    """
     burst_array = []
     for key, items in binned_sfd.items():
         burst_array.append(items[1])
@@ -914,7 +1407,7 @@ def saveBinnedSfdToBinnedMat(binned_sfd, filename):
     pd.DataFrame(burst_array, columns=list(binned_sfd)).to_csv(filename, index=False)
 
 
-def generateBurstSegmentsFromManyNeurons(smoothed_sfd, intervals_dict):
+def generate BurstSegmentsFromManyNeurons(smoothed_sfd, intervals_dict):
     burst_list = []
     target_neuron = []
     max_len = 0

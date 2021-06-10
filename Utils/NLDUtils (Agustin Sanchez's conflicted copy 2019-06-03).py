@@ -289,7 +289,7 @@ if __name__ == "__main__":
 
 
     dt_step = 0.1
-    binned_sfd = burstUtils.digitizeSpikeFreqs(burst_obj.spike_freq_dict, dt_step, time[-1], count=False)
+    binned_sfd = burstUtils.digitizeSpikeFreqs(burst_obj.spike_freq_dict, time[-1])
 
     cut_binned_freq_array = burstUtils.binned_sfd_to_dict_array(binned_sfd, crawling_interval, good_neurons)
 

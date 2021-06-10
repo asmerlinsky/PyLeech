@@ -740,7 +740,7 @@ if __name__ == "__main__":
     crawling_interval = [cdb.loc[fn].start_time.iloc[0], cdb.loc[fn].end_time.iloc[0]]
 
     dt_step = 0.1
-    binned_sfd = burstUtils.digitizeSpikeFreqs(burst_obj.spike_freq_dict, dt_step, time[-1], counting=False)
+    binned_sfd = burstUtils.digitizeSpikeFreqs(burst_obj.spike_freq_dict, time[-1], counting=False)
 
     cut_binned_freq_array = burstUtils.binned_sfd_to_dict_array(binned_sfd, crawling_interval, good_neurons)
 
