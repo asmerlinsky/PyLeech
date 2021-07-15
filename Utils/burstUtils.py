@@ -1599,7 +1599,7 @@ def generateGaussianKernel(sigma, time_range, dt_step, half_gaussian=False):
     time_range = time_range
     x_range = np.arange(-time_range, time_range + dt_step, dt_step)
     if half_gaussian:
-        x_range = x_range[:int(np.ceil(x_range.shape[0]/2))]
+        x_range = x_range[int(np.floor(x_range.shape[0]/2)):]
 
     gaussian = np.exp(-(x_range / sigma) ** 2)
     gaussian /= gaussian.sum()
@@ -1614,7 +1614,6 @@ def smoothBinnedSpikeFreqDict(binned_sfd, sigma, time_range, dt_step, half_gauss
         smoothed_sfd[key] = np.array([items[0], spsig.convolve(items[1], kernel, mode='same', method='direct')])
 
     return smoothed_sfd
-
 
 def sfdToArray(spike_freq_dict):
     burst_array = []
