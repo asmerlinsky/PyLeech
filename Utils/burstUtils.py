@@ -1407,7 +1407,7 @@ def saveBinnedSfdToBinnedMat(binned_sfd, filename):
     pd.DataFrame(burst_array, columns=list(binned_sfd)).to_csv(filename, index=False)
 
 
-def generate BurstSegmentsFromManyNeurons(smoothed_sfd, intervals_dict):
+def generateBurstSegmentsFromManyNeurons(smoothed_sfd, intervals_dict):
     burst_list = []
     target_neuron = []
     max_len = 0
@@ -1594,18 +1594,21 @@ def resampleArrayList(arr_list1, arr_list2):
     return resampled_arr_list1, resampled_arr_list2
 
 
-def generateGaussianKernel(sigma, time_range, dt_step):
+def generateGaussianKernel(sigma, time_range, dt_step, half_gaussian=False):
     sigma = sigma
     time_range = time_range
     x_range = np.arange(-time_range, time_range + dt_step, dt_step)
+    if half_gaussian:
+        x_range = x_range[:int(np.ceil(x_range.shape[0]/2))]
+
     gaussian = np.exp(-(x_range / sigma) ** 2)
     gaussian /= gaussian.sum()
     return gaussian
 
 
-def smoothBinnedSpikeFreqDict(binned_sfd, sigma, time_range, dt_step):
+def smoothBinnedSpikeFreqDict(binned_sfd, sigma, time_range, dt_step, half_gaussian=False):
     smoothed_sfd = {}
-    kernel = generateGaussianKernel(sigma=sigma, time_range=time_range, dt_step=dt_step)
+    kernel = generateGaussianKernel(sigma=sigma, time_range=time_range, dt_step=dt_step, half_gaussian=half_gaussian)
 
     for key, items in binned_sfd.items():
         smoothed_sfd[key] = np.array([items[0], spsig.convolve(items[1], kernel, mode='same', method='direct')])
