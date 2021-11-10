@@ -6,6 +6,9 @@ Created on Sun Jun 24 14:45:12 2018
 """
 
 import neo
+from packaging import version
+if version.parse(neo.__version__) > version.parse("0.9.0"):
+    raise Exception("Neo version must be 0.9.0 or lower. Newer versions will raise errors ahead")
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
