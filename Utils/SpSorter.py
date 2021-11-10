@@ -230,7 +230,7 @@ class SpSorter:
                                    self.transformed_tnse_vectors[self.train_clusters == cl, 1],
                                    color='gray', label=str(cl))
             except AttributeError:
-                warnings.warn("There was an attribute error")
+                warnings.warn("There was an attribute error (it's fine)")
                 ax.scatter(self.transformed_tnse_vectors[:, 0], self.transformed_tnse_vectors[:, 1],
                            c='k')
 
@@ -358,6 +358,7 @@ class SpSorter:
                 print('added cluster  no %i' % max_cluster)
                 max_cluster += 1
         self.generateClustersTemplate()
+        self.setGoodColors()
 
     def hideClusters(self, bad_clust=None, good_clust=None):
 
@@ -404,6 +405,7 @@ class SpSorter:
                         del self.template_dict[cl]
                     except KeyError:
                         pass
+        self.setGoodColors()
 
     def renumberClusters(self):
         good_clusters = getGoodClusters(np.unique(self.train_clusters))
