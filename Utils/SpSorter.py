@@ -779,6 +779,10 @@ class SpSorter:
         for key, item in results.items():
             print(key)
             setattr(self, key, item)
+        try:
+            self.generateClustersTemplate()
+        except:
+            warnings.warn("Failed generating clusters template. That may be expected.")
 
     ####################################################################### Plot methods ##############################
 
