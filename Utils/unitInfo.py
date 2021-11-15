@@ -26,9 +26,9 @@ def loadDataDict(filename='RegistrosDP_PP/CrawlingDataDict.json'):
 
 class UnitInfo():
     required_to_save_dict_keys = ['time_length', 'spike_dict', 'spike_freq_dict', 'template_dict', 'color_dict',
-                                  'nerve_channels', 'notes', 'nerve_unit_dict']
+                                  'nerve_channels', 'notes']
     expected_load_keys = ['time_length', 'spike_dict', 'spike_freq_dict', 'template_dict', 'color_dict', 'isDe3',
-                          'nerve_channels', 'notes', 'nerve_unit_dict']
+                          'nerve_channels', 'notes']
     expected_channels = ["DP", "PP", "MA", "AA"]
 
     def __init__(self, filename, foldername="RegistrosDP_PP", mode='load', time_length=None, spike_dict=None,
