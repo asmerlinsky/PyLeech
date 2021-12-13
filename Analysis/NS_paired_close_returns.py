@@ -16,8 +16,9 @@ if __name__ == "__main__":
     cdd = CDU.loadDataDict()
     file_list = list(cdd)
     binning_dt = .1
-    spike_kernel_sigma = 3
-
+    spike_kernel_sigma = .5
+    rt_frac = .1
+    RT_THRESHOLD = .2
     trace_list = []
     emb_list = []
     ran_files = []
@@ -29,82 +30,67 @@ if __name__ == "__main__":
 
     i = 0
     for fn in file_list:
-        if '2019_07_22_0009' not in fn:
+        # if '2019_07_22_0009' not in fn:
+        #     continue
+        if cdd[fn]['skipped']:
+            print('{} is skipped'.format(fn))
             continue
-        # if not cdd[fn]['skipped']:
         try:
             ns_channel = [key for key, items in cdd[fn]['channels'].items() if 'NS' == items][0]
-        except:
+        except Exception as e:
+
+            print('{} raised {} \nContinuing'.format(fn, e))
             continue
-        # else:
-        #     continue
 
         fn = abfe.getAbFileListFromBasename(fn)[0]
         try:
-            arr_dict, time_vector , fs = abfe.getArraysFromAbfFiles(fn, [ns_channel])
-        except:
+            arr_dict, time_vector, fs = abfe.getArraysFromAbfFiles(fn, [ns_channel])
+        except Exception as e:
+            print('{} raised {}\nContinuing'.format(fn, e))
             continue
 
         ran_files.append(os.path.splitext(os.path.basename(fn))[0])
         run_dict[os.path.splitext(os.path.basename(fn))[0]] = i
 
         NS_kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=spike_kernel_sigma, time_range=20, dt_step=1 / fs)
-        bl_kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=45, time_range=10 * 60, dt_step=1 / fs)
+        bl_kernel = PyLeech.Utils.burstUtils.generateGaussianKernel(sigma=25, time_range=10 * 60, dt_step=1 / fs)
         data = arr_dict[ns_channel] - np.mean(arr_dict[ns_channel])
         data[(data<-20) | (data>20)] = 0
 
-        bl = spsig.fftconvolve(data, bl_kernel, mode='same')[::int(binning_dt * fs)]
+        bl = spsig.fftconvolve(data, bl_kernel, mode='same')#[::int(binning_dt * fs)]
 
-        trace = spsig.fftconvolve(data, NS_kernel, mode='same')[::int(binning_dt * fs)]
+        trace = spsig.fftconvolve(data, NS_kernel, mode='same')#[::int(binning_dt * fs)]
+
+        break
+
+
         del arr_dict
-        # trace_list.append((trace-bl)[1400:9500]) ### solo porque estoy correndo el 2019 08 30 0003
-        # bl = np.zeros(bl.shape)
+
         fig, ax = plt.subplots()
-        # trace_list.append((trace-bl)[1600:9200]) ### solo porque estoy correndo el 2019 07 22 0009
+
         trace_list.append((trace - bl))
         ax.plot(trace - bl)
         fig.suptitle(fn)
-        # emb_list.append(NLD.getDerivativeEmbedding(trace, dt=binning_dt, emb_size=3))
+
         i += 1
 
-    # plt.plot(trace)
-    # plt.plot(bl)
-    # plt.plot(trace - bl)
-    # import time
+    f1, a1 = plt.subplots(2, 1)
+    a1[0].plot(trace)
+    a1[0].plot(data)
+    a1[0].plot(bl)
+    a1[1].plot(trace-bl)
+
+
     peak_height = 2.4
-    # trace_list[0] = -trace_list[0]
-    # resampled_trace = NLD.resampleByCycles(trace_list[0], fs=binning_dt, peak_height=peak_height)
-    # fig1, ax1 = plt.subplots()
-    # ax1.plot(resampled_trace)
-    # NLD.plotCycles(trace_list[0], fs=binning_dt, peak_height=peak_height)
-    # cycles = NLD.getCycles(trace_list[0], fs=binning_dt, peak_height=peak_height)
-    # Ncycles = NLD.getNCycles(trace_list[0], fs=binning_dt, peak_height=peak_height, N=2)
-    # NLD.plotCycles(trace_list[0], fs=binning_dt, peak_height=peak_height, N=2)
-    # for x, y in NLD.getSimilarCycles(Ncycles, 10):
-    #     fig, ax = plt.subplots()
-    #     ax.plot(Ncycles[x])
-    #     ax.plot(Ncycles[y])
-    #     fig.suptitle('double')
-    #     ax.set_title(str(x) + ' ' + str(y))
-    # for x, y in NLD.getSimilarCycles(cycles, 15):
-    #     fig, ax = plt.subplots()
-    #     ax.plot(cycles[x])
-    #     ax.plot(cycles[y])
-    #     fig.suptitle('single')
-    #     ax.set_title(str(x) + ' ' + str(y))
+
 
 
 
     fig1, ax1 = plt.subplots()
-    rt_orig_threshold = .05
+    rt_orig_threshold = RT_THRESHOLD
     num_files = int(len(run_dict))
     start = time.time()
     segments = {}
-    # resampled_trace = NLD.resampleByCycles(trace_list[0], fs=binning_dt, peak_height=.7)
-    # cycles = NLD.getCycles(trace_list[0], fs=binning_dt, peak_height=.7)
-    # ax1.plot(resampled_trace)
-    # kernel = NLD.generateGaussianKernel(sigma=1.5, time_range=2, dt_step=binning_dt)
-    # trace_list[0] = spsig.fftconvolve(resampled_trace, kernel, mode='same')
 
     i = 3
     j = 3
@@ -115,7 +101,7 @@ if __name__ == "__main__":
             rt_threshold = rt_orig_threshold
             rt = NLD.getCloseReturns(trace_list[i][:, np.newaxis], trace_list[j][:, np.newaxis], threshold=rt_threshold, get_mask=True)#[:, :, 0]
 
-            while rt.sum()/rt.size > .5:
+            while rt.sum()/rt.size > rt_frac:
                 rt_threshold /= 2
                 rt = NLD.getCloseReturns(trace_list[i][:, np.newaxis], trace_list[j][:, np.newaxis],
                                          threshold=rt_threshold, get_mask=True)  # [:, :, 0]
@@ -129,9 +115,9 @@ if __name__ == "__main__":
             segments[(list(run_dict)[i], list(run_dict)[j])] = sg_dict
 
     print(time.time() - start)
-    winsound.Beep(2000, 100)
-    winsound.Beep(2000, 100)
-    winsound.Beep(2000, 100)
+    # winsound.Beep(2000, 100)
+    # winsound.Beep(2000, 100)
+    # winsound.Beep(2000, 100)
     # plt.close('all')
     h = 0
     k = 0
@@ -145,7 +131,7 @@ if __name__ == "__main__":
     time_delta = 200
     length = 250
     count = 0
-    count = 0
+
     for file_tup in list(segments)[-2:]:
         items1 = segments[file_tup]
         for diagonal in list(items1):

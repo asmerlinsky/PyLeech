@@ -309,7 +309,6 @@ def getNonZeroIdxs(trace, threshold):
 
 
 def plotDataPredictionAndResult(time, data, pred):
-
     """
     plot trace, prediction and peeling results from the spike sorting using the arrays stored in `Spsorter.time`,
     `Spsorter.pred` and `Spsorter.peel`.
@@ -1010,7 +1009,7 @@ def checkBurstWithin(spike_times, min_spike_no, min_spike_per_sec):
     while i < len(spike_times) - min_spike_no:
 
         for j in range(i + min_spike_no, len(spike_times)):
-            #check whether the current set can be considered a burst BUT not when one more spike is added.
+            # check whether the current set can be considered a burst BUT not when one more spike is added.
             if not checkBurst(spike_times[i:j + 1],
                               min_spike_no,
                               min_spike_per_sec) and checkBurst(spike_times[i:j],
@@ -1242,12 +1241,14 @@ def binned_sfd_to_dict_array(binned_spike_freq_dict, time_interval=None, good_ne
             mask = np.zeros(len(binned_spike_freq_dict[first_key][0]), dtype=bool)
 
             for interval in time_interval:
-                idxs = np.where((binned_spike_freq_dict[first_key][0] > interval[0]) & (binned_spike_freq_dict[first_key][0] < interval[1]))[0]
+                idxs = np.where((binned_spike_freq_dict[first_key][0] > interval[0]) & (
+                            binned_spike_freq_dict[first_key][0] < interval[1]))[0]
                 mask[idxs] = 1
 
         else:
 
-            mask = (binned_spike_freq_dict[first_key][0] > time_interval[0]) & (binned_spike_freq_dict[first_key][0] < time_interval[1])
+            mask = (binned_spike_freq_dict[first_key][0] > time_interval[0]) & (
+                        binned_spike_freq_dict[first_key][0] < time_interval[1])
     else:
 
         mask = np.ones(binned_spike_freq_dict[first_key][0].shape[0], dtype=bool)
@@ -1338,7 +1339,6 @@ def cutSpikeFreqDict(spike_freq_dict, time_interval, outlier_threshold=3.5):
 def saveSpikeFreqDictToBinnedMat(spike_freq_dict, step, filename, num=None, outlier_threshold=3.5,
                                  selected_neurons=None, time_length=None,
                                  time_interval=None, counting=False, freq_threshold=None):
-
     """
     Processes and stores a spike_freq_dict into a condensed matrix of shape (time steps, number of units)
     Parameters
@@ -1599,7 +1599,7 @@ def generateGaussianKernel(sigma, time_range, dt_step, half_gaussian=False):
     time_range = time_range
     x_range = np.arange(-time_range, time_range + dt_step, dt_step)
     if half_gaussian:
-        x_range = x_range[int(np.floor(x_range.shape[0]/2)):]
+        x_range = x_range[int(np.floor(x_range.shape[0] / 2)):]
 
     gaussian = np.exp(-(x_range / sigma) ** 2)
     gaussian /= gaussian.sum()
@@ -1614,6 +1614,7 @@ def smoothBinnedSpikeFreqDict(binned_sfd, sigma, time_range, dt_step, half_gauss
         smoothed_sfd[key] = np.array([items[0], spsig.convolve(items[1], kernel, mode='same', method='direct')])
 
     return smoothed_sfd
+
 
 def sfdToArray(spike_freq_dict):
     burst_array = []

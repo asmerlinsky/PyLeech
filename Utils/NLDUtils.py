@@ -91,6 +91,19 @@ def getCloseReturns(embedding_space1, embedding_space2=None, get_mask=False, thr
     else:
         return dist
 
+# def getMaxs(signal, sampling_rate, min_distance=2):
+#
+#     avg_len = np.mean(signal)
+#
+#     mins = spsig.find_peaks(-signal, -avg_len, distance=int(min_distance * sampling_rate))[0]
+#     maxs = spsig.find_peaks(signal, avg_len, distance=int(min_distance * sampling_rate))[0]
+#
+#     normalization_length = np.median(signal[maxs])
+#
+#     ampl = np.mean(signal[maxs]) - np.mean(signal[mins])
+#
+#     true_mins = spsig.find_peaks(-signal, -(avg_len - (ampl / 8)), distance=int(min_distance * sampling_rate))[0]
+#     return true_mins
 
 @njit
 def computeSingleDistance(trace1):
